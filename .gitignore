@@ -1,0 +1,59 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# Swift / Xcode
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.h
+ios/Runner/GeneratedPluginRegistrant.m
+ios/Runner xcconfig/
+**/xcuserdata/
+**/xcshareddata/
+*.xcarchive
+*.dSYM/
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/key.properties
+**/android/.cxx/
+*.jks
+*.keystore
+
+# Coverage / tests
+coverage/
+lcov.info
+
+# Misc
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,24 @@
+name: noctwave_app
+description: "Noctwave — offline-first BLE remote for personal wellness devices (LoveSpouse protocol)."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  meta: ^1.16.0
+  # Material Design переехал из flutter/material.dart в отдельный пакет
+  # (deprecated после Flutter 3.47).
+  material_ui: ^1.11.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
