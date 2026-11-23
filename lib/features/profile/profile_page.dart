@@ -13,6 +13,7 @@ import '../../core/storage/local_store.dart';
 import '../../core/storage/settings_controller.dart';
 import '../../core/theme/noctwave_theme.dart';
 import '../debug/debug_page.dart';
+import 'color_picker_dialog.dart';
 
 /// Вкладка «Профиль» — локальные настройки (ТЗ 3.2.5): тема под систему,
 /// акцент, модули, приватность (PIN/FaceID), экспорт/импорт базы,
@@ -75,6 +76,8 @@ class _ProfilePageState extends State<ProfilePage> {
   ];
 
   Widget _accentPicker() {
+    final isCustom = !_accentPresets
+        .any((p) => p.$2 == _settings.accentColorValue);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Wrap(
@@ -88,9 +91,28 @@ class _ProfilePageState extends State<ProfilePage> {
               selected: _settings.accentColorValue == value,
               onTap: () => unawaited(_update(_settings.copyWith(accentColorValue: value))),
             ),
+          // Кастомный цвет: открывает HSV/HEX-пикер.
+          _AccentDot(
+            color: isCustom
+                ? Color(_settings.accentColorValue)
+                : NoctwaveColors.of(context).outline,
+            label: 'Свой цвет',
+            selected: isCustom,
+            icon: isCustom ? null : Icons.colorize,
+            onTap: () => unawaited(_pickCustomColor()),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _pickCustomColor() async {
+    final picked = await showColorPicker(
+      context,
+      Color(_settings.accentColorValue),
+    );
+    if (picked == null) return;
+    await _update(_settings.copyWith(accentColorValue: picked.toARGB32()));
   }
 
   // ── PIN / биометрия ─────────────────────────────────────────────────
@@ -365,12 +387,14 @@ class _AccentDot extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.icon,
   });
 
   final Color color;
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -391,7 +415,9 @@ class _AccentDot extends StatelessWidget {
           ),
           child: selected
               ? const Icon(Icons.check, color: Colors.white, size: 20)
-              : null,
+              : (icon != null
+                  ? Icon(icon, color: NoctwaveColors.of(context).textPrimary, size: 20)
+                  : null),
         ),
       ),
     );
