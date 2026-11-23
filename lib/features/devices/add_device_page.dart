@@ -191,8 +191,8 @@ class _AddDevicePageState extends State<AddDevicePage> {
               children: <Widget>[
                 for (final template in snapshot.data!.profiles)
                   ListTile(
-                    leading: const Icon(Icons.bluetooth,
-                        color: NoctwavePalette.accentLow),
+                    leading: Icon(Icons.bluetooth,
+                        color: Theme.of(context).colorScheme.primary),
                     title: Text(template.name),
                     subtitle: Text(template.broadcastPrefixHex),
                     trailing: const Icon(Icons.add_circle_outline),

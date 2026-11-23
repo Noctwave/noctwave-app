@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/ble/ble_advertiser.dart';
+import '../../core/ble/channel_mixer.dart';
 import '../../core/ble/logging_gateway.dart';
 import '../../core/ble/tx_log.dart';
 import '../../core/ble/tx_scheduler.dart';
@@ -66,6 +67,16 @@ class _ControlPageState extends State<ControlPage> {
     ),
   );
 
+  /// Непрерывная поканальная ротация: моторы не сбрасывают друг друга.
+  late final ChannelMixer _mixer = ChannelMixer(
+    gateway: _gateway,
+    prefixHex: widget.device.broadcastPrefixHex,
+    manufacturerId: widget.device.manufacturerId,
+  );
+
+  /// Текущая команда каждого канала (для подсветки плиток и записи).
+  final Map<String, String> _channelCommands = <String, String>{};
+
   final SystemControls _systemControls = SystemControls();
 
   int _modeIndex = 0;
@@ -118,6 +129,9 @@ class _ControlPageState extends State<ControlPage> {
       }
     };
     _lifecycle.start();
+    for (final ch in widget.device.channels) {
+      _mixer.registerStop(ch.id, ch.stopCmdHex);
+    }
   }
 
   /// iOS: сворачивание или блокировка экрана переносит ServiceUUIDs в
@@ -165,6 +179,7 @@ class _ControlPageState extends State<ControlPage> {
     _lifecycle.dispose();
     _systemControls.dispose();
     unawaited(_systemControls.setKeepScreenOn(false));
+    unawaited(_mixer.dispose());
     unawaited(_scheduler.dispose());
     super.dispose();
   }
@@ -197,19 +212,15 @@ class _ControlPageState extends State<ControlPage> {
     return '$mm:$ss';
   }
 
+  /// Пульт: команда только выбранного канала. Остальные каналы продолжают
+  /// вещать свою прежнюю команду (микшер не сбрасывает их).
   Future<void> _sendCommand(String commandHex) async {
     final channel = _channel;
     if (channel == null) return;
     _startSession();
     _recorder.record(channel.id, commandHex);
-    // Непрерывная передача: у устройства watchdog ~800 мс — одиночный
-    // burst 350 мс заставил бы мотор глохнуть. Режим держим в эфире,
-    // пока не пришёл СТОП или другой режим.
-    await _scheduler.updateDynamicCommand(
-      prefixHex: widget.device.broadcastPrefixHex,
-      commandHex: commandHex,
-      manufacturerId: widget.device.manufacturerId,
-    );
+    _channelCommands[channel.id] = commandHex;
+    _mixer.setCommand(channel.id, commandHex);
     if (!mounted) return;
     setState(() {
       _txActive = true;
@@ -217,36 +228,54 @@ class _ControlPageState extends State<ControlPage> {
     });
   }
 
-  /// Динамическая команда из режимов Жест/Автопилот (ТЗ 5.4.2):
-  /// квантование u → ступень, троттлинг и дедупликация — в планировщике.
-  Future<void> _sendDynamic(String channelId, double u) async {
+  /// Не-пульт режимы (Жест/Автопилот/Сенсоры/Микрофон/Медиа/Кегель):
+  /// один уровень u применяется СРАЗУ ко всем моторам.
+  void _sendToAll(double u) {
+    _startSession();
+    for (final ch in widget.device.channels) {
+      final cmd = TxScheduler.quantize(
+        u: u,
+        intensityStepsHex: ch.intensityStepsHex,
+        stopCmdHex: ch.stopCmdHex,
+      );
+      _recorder.record(ch.id, cmd);
+      _channelCommands[ch.id] = cmd;
+      _mixer.setCommand(ch.id, cmd);
+    }
+    if (!mounted) return;
+    setState(() => _txActive = true);
+  }
+
+  /// Команда конкретного канала из жеста (2D) или плеера ритмов.
+  void _sendChannel(String channelId, String cmdHex) {
+    _startSession();
+    _recorder.record(channelId, cmdHex);
+    _channelCommands[channelId] = cmdHex;
+    _mixer.setCommand(channelId, cmdHex);
+    if (!mounted) return;
+    setState(() {
+      _txActive = true;
+      _lastCommandHex = cmdHex;
+    });
+  }
+
+  /// Динамический уровень для одного канала (жест 2D).
+  void _sendDynamic(String channelId, double u) {
     final channel = widget.device.channels
         .where((c) => c.id == channelId)
         .firstOrNull;
     if (channel == null) return;
-    _startSession();
     final cmd = TxScheduler.quantize(
       u: u,
       intensityStepsHex: channel.intensityStepsHex,
       stopCmdHex: channel.stopCmdHex,
     );
-    _recorder.record(channel.id, cmd);
-    await _scheduler.updateDynamicCommand(
-      prefixHex: widget.device.broadcastPrefixHex,
-      commandHex: cmd,
-      manufacturerId: widget.device.manufacturerId,
-    );
-    if (!mounted) return;
-    setState(() => _lastCommandHex = cmd);
+    _sendChannel(channelId, cmd);
   }
 
-  /// Команда из плеера ритмов: уже готовый HEX, burst.
-  Future<void> _sendPatternCommand(String channelId, String cmdHex) async {
-    final channel = widget.device.channels
-        .where((c) => c.id == channelId)
-        .firstOrNull;
-    if (channel == null) return;
-    await _sendCommand(cmdHex);
+  /// Команда из плеера ритмов: готовый HEX для канала.
+  void _sendPatternCommand(String channelId, String cmdHex) {
+    _sendChannel(channelId, cmdHex);
   }
 
   /// REC в доке (ТЗ 4.3): запись/остановка записи сессии.
@@ -335,19 +364,14 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   Future<void> _emergencyStop() async {
-    final channel = _channel;
-    if (channel == null) return;
     // Один тактильный импульс на СТОП (без двойной вибрации).
     _haptic(HapticFeedbackType.heavy);
-    await _scheduler.stop(
-      prefixHex: widget.device.broadcastPrefixHex,
-      stopCmdHex: channel.stopCmdHex,
-      manufacturerId: widget.device.manufacturerId,
-    );
+    _channelCommands.clear();
+    await _mixer.stopAll();
     if (!mounted) return;
     setState(() {
       _txActive = true;
-      _lastCommandHex = channel.stopCmdHex;
+      _lastCommandHex = _channel?.stopCmdHex;
       _sessionStart = null;
       _sessionTicker?.cancel();
       _sessionTicker = null;
@@ -361,20 +385,19 @@ class _ControlPageState extends State<ControlPage> {
     final channel = _channel;
     if (channel == null) return;
     _haptic(HapticFeedbackType.medium);
-    await _sendCommand(channel.intensityStepsHex.last);
+    _sendCommand(channel.intensityStepsHex.last);
   }
 
   Future<void> _holdBoostRelease() async {
     final channel = _channel;
     if (channel == null) return;
-    await _sendCommand(_lastCommandHex ?? channel.stopCmdHex);
+    _sendCommand(_channelCommands[channel.id] ?? channel.stopCmdHex);
   }
 
-  Future<bool> _onWillPop() async {
-    // При выходе из управления всегда шлём СТОП: непрерывная передача
-    // не должна оставлять мотор включённым после закрытия экрана.
-    await _emergencyStop();
-    return true;
+  /// Выход из управления: сразу закрываем экран, СТОП шлём в фоне.
+  void _exitControl() {
+    unawaited(_mixer.stopAll());
+    if (mounted) Navigator.of(context).pop();
   }
 
   void _toggleOledLock() {
@@ -387,10 +410,9 @@ class _ControlPageState extends State<ControlPage> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        final pop = await _onWillPop();
-        if (pop && mounted && context.mounted) Navigator.of(context).pop();
+        _exitControl();
       },
       child: Stack(
         children: <Widget>[
@@ -398,11 +420,7 @@ class _ControlPageState extends State<ControlPage> {
             appBar: AppBar(
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: () async {
-                  if (await _onWillPop() && mounted && context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
+                onPressed: _exitControl,
               ),
               title: Text(widget.device.name),
               actions: <Widget>[
@@ -596,12 +614,8 @@ class _ControlPageState extends State<ControlPage> {
   /// Рабочая область выбранного режима (ТЗ 3.2.3).
   Widget _buildModeBody() {
     final modeName = _modeIndex < _modes.length ? _modes[_modeIndex] : '';
-    void sendU(double u) {
-      final channel = _channel;
-      if (channel != null) {
-        unawaited(_sendDynamic(channel.id, u));
-      }
-    }
+    // Не-пульт режимы управляют всеми моторами сразу.
+    void sendU(double u) => _sendToAll(u);
 
     switch (modeName) {
       case 'Пульт':
@@ -609,7 +623,8 @@ class _ControlPageState extends State<ControlPage> {
       case 'Жест':
         return GestureMode(
           device: widget.device,
-          onCommand: (channelId, u) => unawaited(_sendDynamic(channelId, u)),
+          onCommand: (channelId, u) => _sendDynamic(channelId, u),
+          onAll: (u) => _sendToAll(u),
           onSaveToRhythms: (samples) => unawaited(_saveGestureToRhythms(samples)),
         );
       case 'Ритмы':
@@ -619,7 +634,7 @@ class _ControlPageState extends State<ControlPage> {
                 device: widget.device,
                 store: widget.store!,
                 onCommand: (channelId, cmdHex) =>
-                    unawaited(_sendPatternCommand(channelId, cmdHex)),
+                    _sendPatternCommand(channelId, cmdHex),
               );
       case 'Автопилот':
         return AutopilotMode(onSample: sendU);
@@ -689,6 +704,9 @@ class _ControlPageState extends State<ControlPage> {
         .skip(1) // индекс 0 — стоп, отдельная кнопка в доке
         .toList();
     final maxHex = channel.intensityStepsHex.last;
+    // Активный режим именно этого канала: переключение канала не меняет
+    // подсветку других и не сбрасывает их команды.
+    final activeHex = _channelCommands[channel.id];
     return GridView.count(
       padding: const EdgeInsets.all(16),
       crossAxisCount: 3,
@@ -698,27 +716,33 @@ class _ControlPageState extends State<ControlPage> {
       children: <Widget>[
         for (var i = 0; i < steps.length; i++)
           PulsingActive(
-            intensity: _lastCommandHex == steps[i] ? (i + 1) / steps.length : 0,
+            intensity: activeHex == steps[i] ? (i + 1) / steps.length : 0,
             enabled: _settings.pulseAnimation,
             child: _ModeTile(
               label: 'Режим ${i + 1}',
               icon: _modeIcon(i + 1),
-              active: _lastCommandHex == steps[i],
+              active: activeHex == steps[i],
               intensity: (i + 1) / steps.length,
-              onTap: () => unawaited(_sendCommand(steps[i])),
+              onTap: () {
+                _haptic(HapticFeedbackType.light);
+                unawaited(_sendCommand(steps[i]));
+              },
             ),
           ),
         // «Максимум» — последняя плитка сетки (не отдельная кнопка).
         // Тап = максимум; удержание = буст с возвратом при отпускании.
         PulsingActive(
-          intensity: _lastCommandHex == maxHex ? 1 : 0,
+          intensity: activeHex == maxHex ? 1 : 0,
           enabled: _settings.pulseAnimation,
           child: _ModeTile(
             label: 'Максимум',
             icon: Icons.bolt,
-            active: _lastCommandHex == maxHex,
+            active: activeHex == maxHex,
             intensity: 1,
-            onTap: () => unawaited(_sendCommand(maxHex)),
+            onTap: () {
+              _haptic(HapticFeedbackType.light);
+              unawaited(_sendCommand(maxHex));
+            },
             onHoldStart: () => unawaited(_holdBoostStart()),
             onHoldEnd: () => unawaited(_holdBoostRelease()),
           ),
@@ -883,7 +907,9 @@ class _ModeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = NoctwavePalette.accentForIntensity(intensity);
+    // Акцент из темы (выбранный пользователем) → коралл по интенсивности.
+    final base = Theme.of(context).colorScheme.primary;
+    final accent = NoctwavePalette.accentForIntensity(intensity, from: base);
     final colors = NoctwaveColors.of(context);
     return GestureDetector(
       onLongPressStart: onHoldStart == null ? null : (_) => onHoldStart!(),

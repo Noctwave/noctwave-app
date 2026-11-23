@@ -125,7 +125,7 @@ class _SensorsModeState extends State<SensorsMode> {
       children: <Widget>[
         Row(
           children: <Widget>[
-            const Icon(Icons.vibration, color: NoctwavePalette.accentLow),
+            Icon(Icons.vibration, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             const Expanded(
               child: Text('Тряска (Shake)',
@@ -156,7 +156,7 @@ class _SensorsModeState extends State<SensorsMode> {
             minHeight: 12,
             backgroundColor: NoctwavePalette.outline,
             valueColor: AlwaysStoppedAnimation<Color>(
-              NoctwavePalette.accentForIntensity(_currentLevel),
+              NoctwavePalette.accentForIntensity(_currentLevel, from: Theme.of(context).colorScheme.primary),
             ),
           ),
         ),

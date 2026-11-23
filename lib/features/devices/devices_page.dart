@@ -328,8 +328,8 @@ class _DeviceAvatar extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: Image.network(
         url,
-        width: 40,
-        height: 40,
+        width: 52,
+        height: 52,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stack) => fallback,
         loadingBuilder: (_, child, progress) =>

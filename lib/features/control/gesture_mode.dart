@@ -12,14 +12,17 @@ class GestureMode extends StatefulWidget {
     super.key,
     required this.device,
     required this.onCommand,
+    this.onAll,
     this.onSaveToRhythms,
   });
 
   final DeviceProfile device;
 
-  /// Колбэк отправки команды: (channelId | null, u | (u1, u2)).
-  /// Для 1D — один канал и уровень 0..1; для 2D — пара уровней.
+  /// Колбэк команды конкретного канала (2D XY-пэд).
   final void Function(String channelId, double u) onCommand;
+
+  /// Колбэк «все моторы сразу» (1D-кривая): уровень 0..1 на все каналы.
+  final void Function(double u)? onAll;
 
   /// Сохранить зафиксированный зацикленный жест в «Ритмы» (ТЗ 4.2).
   final void Function(List<GestureSample> samples)? onSaveToRhythms;
@@ -51,10 +54,10 @@ class _GestureModeState extends State<GestureMode> {
   int _loopPos = 0;
   final Stopwatch _loopClock = Stopwatch();
 
-  /// «Живая отправка»: рисование сразу управляет устройством.
-  /// По умолчанию выключено — жест только записывается, а управление
-  /// включается кнопкой Loop/Play. Так случайное касание не запускает мотор.
-  bool _liveSend = false;
+  /// «Живая отправка»: рисование сразу управляет устройством (как в
+  /// LoveSpouse — водишь пальцем, мотор меняет мощность). Включено по
+  /// умолчанию; можно выключить, чтобы только записывать жест.
+  bool _liveSend = true;
 
   bool get _is2D => widget.device.channels.length >= 2;
 
@@ -79,12 +82,22 @@ class _GestureModeState extends State<GestureMode> {
     }
     if (channels.isEmpty) return;
     // Команды уходят только в «живом» режиме; иначе жест лишь пишется.
-    if (!_liveSend) return;
+    if (!_liveSend) {
+      _canvasKey.currentState?._repaint();
+      return;
+    }
     if (_is2D) {
       widget.onCommand(channels[0].id, u1.clamp(0.0, 1.0));
-      widget.onCommand(channels[1].id, u2.clamp(0.0, 1.0));
+      if (channels.length > 1) {
+        widget.onCommand(channels[1].id, u2.clamp(0.0, 1.0));
+      }
     } else {
-      widget.onCommand(channels[0].id, u1.clamp(0.0, 1.0));
+      // 1D: уровень на все моторы сразу.
+      if (widget.onAll != null) {
+        widget.onAll!(u1.clamp(0.0, 1.0));
+      } else {
+        widget.onCommand(channels[0].id, u1.clamp(0.0, 1.0));
+      }
     }
     _canvasKey.currentState?._repaint();
   }
@@ -118,9 +131,15 @@ class _GestureModeState extends State<GestureMode> {
         final s = _fullTrack[idx];
         final channels = widget.device.channels;
         if (channels.isNotEmpty) {
-          widget.onCommand(channels[0].id, s.u1);
-          if (_is2D && channels.length > 1) {
-            widget.onCommand(channels[1].id, s.u2);
+          if (_is2D) {
+            widget.onCommand(channels[0].id, s.u1);
+            if (channels.length > 1) {
+              widget.onCommand(channels[1].id, s.u2);
+            }
+          } else if (widget.onAll != null) {
+            widget.onAll!(s.u1);
+          } else {
+            widget.onCommand(channels[0].id, s.u1);
           }
         }
       }
@@ -167,11 +186,6 @@ class _GestureModeState extends State<GestureMode> {
                 value: _liveSend,
                 onChanged: (v) => setState(() => _liveSend = v),
               ),
-              const SizedBox(width: 4),
-              Text('Живьём',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: NoctwaveColors.of(context).textSecondary)),
             ],
           ),
         ),
@@ -183,7 +197,7 @@ class _GestureModeState extends State<GestureMode> {
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor:
-                        _looping ? NoctwavePalette.accentHigh : NoctwavePalette.accentLow,
+                        _looping ? NoctwavePalette.accentHigh : Theme.of(context).colorScheme.primary,
                   ),
                   icon: Icon(_looping ? Icons.stop_circle_outlined : Icons.loop),
                   label: Text(_looping ? 'Стоп Loop' : 'Loop'),
@@ -259,6 +273,8 @@ class _GestureCanvasState extends State<_GestureCanvas> {
             is2D: widget.is2D,
             track: widget.track,
             loopProgress: widget.loopProgress,
+            accent: Theme.of(context).colorScheme.primary,
+            gridColor: NoctwaveColors.of(context).outline,
           ),
         );
         return GestureDetector(
@@ -268,8 +284,8 @@ class _GestureCanvasState extends State<_GestureCanvas> {
             borderRadius: BorderRadius.circular(16),
             child: Container(
               decoration: BoxDecoration(
-                color: NoctwavePalette.surface,
-                border: Border.all(color: NoctwavePalette.outline),
+                color: NoctwaveColors.of(context).surface,
+                border: Border.all(color: NoctwaveColors.of(context).outline),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: custom,
@@ -282,17 +298,25 @@ class _GestureCanvasState extends State<_GestureCanvas> {
 }
 
 class _TrackPainter extends CustomPainter {
-  _TrackPainter({required this.is2D, required this.track, this.loopProgress});
+  _TrackPainter({
+    required this.is2D,
+    required this.track,
+    this.loopProgress,
+    required this.accent,
+    required this.gridColor,
+  });
 
   final bool is2D;
   final List<GestureSample> track;
   final double? loopProgress;
+  final Color accent;
+  final Color gridColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     // Сетка.
     final grid = Paint()
-      ..color = NoctwavePalette.outline.withValues(alpha: 0.5)
+      ..color = gridColor.withValues(alpha: 0.5)
       ..strokeWidth = 1;
     for (var i = 1; i < 4; i++) {
       canvas.drawLine(
@@ -310,7 +334,7 @@ class _TrackPainter extends CustomPainter {
     final total = track.last.tMs == 0 ? 1 : track.last.tMs;
 
     final paint = Paint()
-      ..color = NoctwavePalette.accentLow
+      ..color = accent
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;

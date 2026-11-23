@@ -100,7 +100,7 @@ class _MicModeState extends State<MicMode> {
           ),
         Row(
           children: <Widget>[
-            const Icon(Icons.mic, color: NoctwavePalette.accentLow),
+            Icon(Icons.mic, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             const Expanded(
               child: Text('Микрофон (Ambient Sound)',
@@ -120,7 +120,7 @@ class _MicModeState extends State<MicMode> {
             minHeight: 12,
             backgroundColor: NoctwavePalette.outline,
             valueColor: AlwaysStoppedAnimation<Color>(
-              NoctwavePalette.accentForIntensity(_level),
+              NoctwavePalette.accentForIntensity(_level, from: Theme.of(context).colorScheme.primary),
             ),
           ),
         ),

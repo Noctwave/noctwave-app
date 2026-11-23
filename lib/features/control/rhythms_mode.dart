@@ -166,7 +166,7 @@ class _RhythmsModeState extends State<RhythmsMode> {
                     playing ? Icons.pause_circle : Icons.play_circle_outline,
                     color: playing
                         ? NoctwavePalette.accentHigh
-                        : NoctwavePalette.accentLow,
+                        : Theme.of(context).colorScheme.primary,
                     size: 36,
                   ),
                   title: Text(p.name),

@@ -179,7 +179,7 @@ class _AudioPanelState extends State<_AudioPanel> {
             minHeight: 12,
             backgroundColor: colors.outline,
             valueColor: AlwaysStoppedAnimation<Color>(
-              NoctwavePalette.accentForIntensity(_level),
+              NoctwavePalette.accentForIntensity(_level, from: Theme.of(context).colorScheme.primary),
             ),
           ),
         ),
@@ -422,7 +422,7 @@ class _VideoPanelState extends State<_VideoPanel> {
                           minHeight: 8,
                           backgroundColor: colors.outline,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            NoctwavePalette.accentForIntensity(_level),
+                            NoctwavePalette.accentForIntensity(_level, from: Theme.of(context).colorScheme.primary),
                           ),
                         ),
                       ),

@@ -129,7 +129,7 @@ class _KegelModeState extends State<KegelMode> {
                 style: FilledButton.styleFrom(
                   backgroundColor: running
                       ? NoctwavePalette.accentHigh
-                      : NoctwavePalette.accentLow,
+                      : Theme.of(context).colorScheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 icon: Icon(running ? Icons.stop : Icons.play_arrow),

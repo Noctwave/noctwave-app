@@ -69,7 +69,7 @@ class _AutopilotModeState extends State<AutopilotMode> {
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor:
-                  _running ? NoctwavePalette.accentHigh : NoctwavePalette.accentLow,
+                  _running ? NoctwavePalette.accentHigh : Theme.of(context).colorScheme.primary,
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
             icon: Icon(_running ? Icons.stop : Icons.play_arrow),

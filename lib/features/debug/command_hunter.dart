@@ -324,7 +324,7 @@ class _CommandHunterState extends State<CommandHunter> {
                   style: FilledButton.styleFrom(
                     backgroundColor: _autoRun
                         ? NoctwavePalette.accentHigh
-                        : NoctwavePalette.accentLow,
+                        : Theme.of(context).colorScheme.primary,
                   ),
                   icon: Icon(_autoRun ? Icons.pause : Icons.play_arrow),
                   label: Text(_autoRun ? 'Стоп автоперебор' : 'Автоперебор'),
@@ -358,7 +358,7 @@ class _CommandHunterState extends State<CommandHunter> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: NoctwavePalette.accentLow,
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               icon: const Icon(Icons.check_circle_outline),
