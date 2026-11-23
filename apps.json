@@ -7,10 +7,10 @@
       "name": "Noctwave (Dev)",
       "bundleIdentifier": "com.noctwave.noctwaveApp",
       "developerName": "Noctwave",
-      "localizedDescription": "Noctwave — офлайн-пульт для BLE-устройств через Bluetooth Advertising. Без аккаунтов, телеметрии и подписок.\n\nКанал: preview\nСборка: 1.0.0-dev.2\nОбновлено: 2026-11-23 11:16 UTC",
+      "localizedDescription": "Noctwave — офлайн-пульт для BLE-устройств через Bluetooth Advertising. Без аккаунтов, телеметрии и подписок.\n\nКанал: preview\nСборка: 1.0.0-dev.3\nОбновлено: 2026-11-23 11:41 UTC",
       "iconURL": "https://raw.githubusercontent.com/Noctwave/noctwave-app/main/docs/appicon.png",
-      "version": "1.0.0-dev.2",
-      "versionDate": "2026-11-23T11:16:53.098342+00:00",
+      "version": "1.0.0-dev.3",
+      "versionDate": "2026-11-23T11:41:22.133920+00:00",
       "downloadURL": "https://github.com/Noctwave/noctwave-app/releases/download/preview/Noctwave-preview.ipa",
       "tintColor": "6366F1",
       "channel": "preview"
