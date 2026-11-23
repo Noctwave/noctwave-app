@@ -166,11 +166,14 @@ jobs:
 
       # iOS — основной тестируемый канал: гоняем нативные unit-тесты
       # (контрольный вектор XOR pre-whitening из ТЗ 5.3) до сборки.
-      # Симулятор выбирается динамически: на раннерах доступны разные
-      # поколения iPhone (16/17/...), жёсткое имя ломает xcodebuild.
+      # Сначала подготавливаем Flutter-фреймворк и Pods для симулятора
+      # (без этого xcodebuild падает с "Module 'Flutter' not found"),
+      # симулятор выбираем динамически — поколения iPhone на раннерах
+      # меняются, жёсткое имя ломает destination.
       - name: 🧪 iOS unit tests (RunnerTests, симулятор)
         run: |
           set -o pipefail
+          flutter build ios --simulator --no-codesign
           SIM_ID=$(xcrun simctl list devices available --json | python3 -c '
           import json, sys
           data = json.load(sys.stdin)
