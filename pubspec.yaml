@@ -18,6 +18,7 @@ dependencies:
   path_provider: ^2.1.6
   http: ^1.6.0
   mobile_scanner: ^7.5.0
+  sensors_plus: ^7.1.1
 
 dev_dependencies:
   flutter_test:

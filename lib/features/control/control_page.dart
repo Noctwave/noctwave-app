@@ -16,6 +16,8 @@ import 'autopilot_mode.dart';
 import 'gesture_mode.dart';
 import 'oled_lock_overlay.dart';
 import 'rhythms_mode.dart';
+import 'sensors_bridge.dart';
+import 'sensors_mode.dart';
 
 /// Экран управления устройством (ТЗ 3.2.3): переключатель режимов,
 /// рабочая область (MVP — «Пульт»), OLED-замок и нижний док.
@@ -72,13 +74,11 @@ class _ControlPageState extends State<ControlPage> {
   final PatternRecorder _recorder = PatternRecorder();
   bool _recording = false;
 
-  static const _modes = <String>['Пульт', 'Жест', 'Ритмы', 'Автопилот'];
+  static const _modes = <String>['Пульт', 'Жест', 'Ритмы', 'Автопилот', 'Сенсоры'];
 
-  DeviceChannel? get _channel {
-    final channels = widget.device.channels;
-    if (channels.isEmpty) return null;
-    return channels[_channelIndex.clamp(0, channels.length - 1)];
-  }
+  /// Поток акселерометра для режима «Сенсоры» (sensors_plus).
+  Stream<(double, double, double)>? _accelerometerEvents;
+  bool _sensorsProbed = false;
 
   @override
   void initState() {
@@ -89,6 +89,27 @@ class _ControlPageState extends State<ControlPage> {
         unawaited(_emergencyStop());
       }
     };
+  }
+
+  /// Ленивая инициализация акселерометра: сенсор открывается только при
+  /// первом входе в режим «Сенсоры» (не держим сенсор зря).
+  Future<void> _ensureSensors() async {
+    if (_sensorsProbed) return;
+    _sensorsProbed = true;
+    try {
+      await initSensors();
+      _accelerometerEvents = sensorBridge?.accelerometerEvents;
+    } catch (_) {
+      // sensors_plus недоступен (desktop/тесты) — режим покажет заглушку.
+      _accelerometerEvents = null;
+    }
+    if (mounted) setState(() {});
+  }
+
+  DeviceChannel? get _channel {
+    final channels = widget.device.channels;
+    if (channels.isEmpty) return null;
+    return channels[_channelIndex.clamp(0, channels.length - 1)];
   }
 
   @override
@@ -379,6 +400,17 @@ class _ControlPageState extends State<ControlPage> {
                           }
                         },
                       ),
+                    4 => _accelerometerEvents == null
+                        ? _placeholderMode('Сенсоры (акселерометр недоступен)')
+                        : SensorsMode(
+                            onSample: (u) {
+                              final channel = _channel;
+                              if (channel != null) {
+                                unawaited(_sendDynamic(channel.id, u));
+                              }
+                            },
+                            accelerometerEvents: _accelerometerEvents!,
+                          ),
                     _ => _placeholderMode(_modes[_modeIndex]),
                   },
                 ),
@@ -412,6 +444,7 @@ class _ControlPageState extends State<ControlPage> {
           onSelected: (_) {
             _haptic(HapticFeedbackType.light);
             setState(() => _modeIndex = i);
+            if (i == 4) unawaited(_ensureSensors());
           },
         ),
       ),
