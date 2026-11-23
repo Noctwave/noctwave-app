@@ -166,13 +166,33 @@ jobs:
 
       # iOS — основной тестируемый канал: гоняем нативные unit-тесты
       # (контрольный вектор XOR pre-whitening из ТЗ 5.3) до сборки.
+      # Симулятор выбирается динамически: на раннерах доступны разные
+      # поколения iPhone (16/17/...), жёсткое имя ломает xcodebuild.
       - name: 🧪 iOS unit tests (RunnerTests, симулятор)
         run: |
           set -o pipefail
+          SIM_ID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          devices = []
+          for runtime, devs in data["devices"].items():
+              if "iOS" not in runtime:
+                  continue
+              for d in devs:
+                  if d.get("isAvailable") and "iPhone" in d["name"]:
+                      devices.append(d["udid"])
+          print(devices[0] if devices else "")
+          ')
+          if [ -z "$SIM_ID" ]; then
+            echo "::error::Не найден доступный iPhone-симулятор"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using simulator: $SIM_ID"
           xcodebuild test \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,id=$SIM_ID" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee xcodebuild-test.log | tail -40
 
