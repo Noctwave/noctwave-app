@@ -7,6 +7,7 @@ import '../../core/storage/local_store.dart';
 import '../../core/theme/noctwave_theme.dart';
 import '../control/control_page.dart';
 import 'add_device_page.dart';
+import 'code_qr_dialog.dart';
 
 /// Вкладка «Устройства» (ТЗ 3.2.1): сетка сохранённых профилей,
 /// Empty State, добавление через [AddDevicePage], долгое нажатие —
@@ -31,6 +32,48 @@ class _DevicesPageState extends State<DevicesPage> {
 
   void _reload() {
     setState(() => _devices = widget.store.loadDevices());
+  }
+
+  /// Меню выбора способа добавления: Код/QR (маленькое окно) или
+  /// «Другие варианты» (оффлайн-база + ручной профиль).
+  Future<void> _showAddMenu() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: NoctwaveColors.of(context).surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(height: 12),
+            ListTile(
+              leading: Icon(Icons.qr_code_scanner,
+                  color: Theme.of(context).colorScheme.primary),
+              title: const Text('Код / QR'),
+              subtitle: const Text('Найти модель по коду с коробки'),
+              onTap: () => Navigator.pop(sheetContext, 'code'),
+            ),
+            ListTile(
+              leading: Icon(Icons.more_horiz,
+                  color: Theme.of(context).colorScheme.primary),
+              title: const Text('Другие варианты'),
+              subtitle: const Text('Оффлайн-база и ручной профиль'),
+              onTap: () => Navigator.pop(sheetContext, 'other'),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'code') {
+      await showCodeQrDialog(context, widget.store);
+      _reload();
+    } else if (choice == 'other') {
+      await _openAddPage();
+    }
   }
 
   Future<void> _openAddPage() async {
@@ -166,21 +209,25 @@ class _DevicesPageState extends State<DevicesPage> {
       appBar: AppBar(
         title: const Text('Устройства'),
         actions: <Widget>[
-          IconButton(
-            onPressed: _openAddPage,
-            icon: const Icon(Icons.add),
-            tooltip: 'Добавить устройство',
+          // Верхний плюсик с цветной круглой подложкой.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: () => unawaited(_showAddMenu()),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 22),
+              ),
+            ),
           ),
         ],
       ),
       body: _devices.isEmpty ? _buildEmptyState() : _buildGrid(),
-      floatingActionButton: _devices.isEmpty
-          ? null
-          : FloatingActionButton(
-              onPressed: _openAddPage,
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              child: const Icon(Icons.add),
-            ),
     );
   }
 
@@ -209,15 +256,9 @@ class _DevicesPageState extends State<DevicesPage> {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: _openAddPage,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Добавить по коду / QR'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _openAddPage,
-              icon: const Icon(Icons.library_books_outlined),
-              label: const Text('Выбрать из оффлайн-базы'),
+              onPressed: () => unawaited(_showAddMenu()),
+              icon: const Icon(Icons.add),
+              label: const Text('Добавить устройство'),
             ),
           ],
         ),

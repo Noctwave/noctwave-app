@@ -98,6 +98,9 @@ class AppSettings {
     this.appPinHash,
     this.biometricUnlock = false,
     this.themeMode = 'system',
+    this.profileName = 'Пользователь',
+    this.profileGender = 'Мужской',
+    this.profileAge = 30,
   });
 
   /// Тактильный отклик (ТЗ 3.1).
@@ -136,6 +139,11 @@ class AppSettings {
   /// Тема: 'system' (под тему ОС), 'dark', 'light'.
   final String themeMode;
 
+  // ── Профиль пользователя ────────────────────────────────────────────────
+  final String profileName;
+  final String profileGender;
+  final int profileAge;
+
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
         hapticsEnabled: (json['hapticsEnabled'] as bool?) ?? true,
         pulseAnimation: (json['pulseAnimation'] as bool?) ?? true,
@@ -153,6 +161,9 @@ class AppSettings {
         appPinHash: json['appPinHash'] as String?,
         biometricUnlock: (json['biometricUnlock'] as bool?) ?? false,
         themeMode: (json['themeMode'] as String?) ?? 'system',
+        profileName: (json['profileName'] as String?) ?? 'Пользователь',
+        profileGender: (json['profileGender'] as String?) ?? 'Мужской',
+        profileAge: (json['profileAge'] as num?)?.toInt() ?? 30,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -170,6 +181,9 @@ class AppSettings {
         if (appPinHash != null) 'appPinHash': appPinHash,
         'biometricUnlock': biometricUnlock,
         'themeMode': themeMode,
+        'profileName': profileName,
+        'profileGender': profileGender,
+        'profileAge': profileAge,
       };
 
   AppSettings copyWith({
@@ -188,6 +202,9 @@ class AppSettings {
     bool clearPinHash = false,
     bool? biometricUnlock,
     String? themeMode,
+    String? profileName,
+    String? profileGender,
+    int? profileAge,
   }) =>
       AppSettings(
         hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
@@ -204,5 +221,8 @@ class AppSettings {
         appPinHash: clearPinHash ? null : (appPinHash ?? this.appPinHash),
         biometricUnlock: biometricUnlock ?? this.biometricUnlock,
         themeMode: themeMode ?? this.themeMode,
+        profileName: profileName ?? this.profileName,
+        profileGender: profileGender ?? this.profileGender,
+        profileAge: profileAge ?? this.profileAge,
       );
 }
