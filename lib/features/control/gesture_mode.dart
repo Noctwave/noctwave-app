@@ -51,6 +51,11 @@ class _GestureModeState extends State<GestureMode> {
   int _loopPos = 0;
   final Stopwatch _loopClock = Stopwatch();
 
+  /// «Живая отправка»: рисование сразу управляет устройством.
+  /// По умолчанию выключено — жест только записывается, а управление
+  /// включается кнопкой Loop/Play. Так случайное касание не запускает мотор.
+  bool _liveSend = false;
+
   bool get _is2D => widget.device.channels.length >= 2;
 
   @override
@@ -73,6 +78,8 @@ class _GestureModeState extends State<GestureMode> {
       _track.removeAt(0);
     }
     if (channels.isEmpty) return;
+    // Команды уходят только в «живом» режиме; иначе жест лишь пишется.
+    if (!_liveSend) return;
     if (_is2D) {
       widget.onCommand(channels[0].id, u1.clamp(0.0, 1.0));
       widget.onCommand(channels[1].id, u2.clamp(0.0, 1.0));
@@ -139,6 +146,33 @@ class _GestureModeState extends State<GestureMode> {
               onSample: _onSample,
               loopProgress: _looping && _fullTrack.length > 1 ? _loopPos / (_fullTrack.length - 1) : null,
             ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  _liveSend
+                      ? 'Рисунок сразу управляет устройством'
+                      : 'Рисунок только записывается — нажми Loop, чтобы запустить',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: NoctwaveColors.of(context).textSecondary,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _liveSend,
+                onChanged: (v) => setState(() => _liveSend = v),
+              ),
+              const SizedBox(width: 4),
+              Text('Живьём',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: NoctwaveColors.of(context).textSecondary)),
+            ],
           ),
         ),
         Padding(

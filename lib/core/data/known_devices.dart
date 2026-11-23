@@ -1,18 +1,17 @@
-/// Проверенные таблицы команд протокола LoveSpouse.
+/// Проверенные таблицы команд протокола LoveSpouse (BroadLink Fastcon).
 ///
-/// Источники: HCI-логи реальных устройств (fa-architect/mcontrol,
-/// подтверждено на железе), OpenSpouse PROTOCOL.md, ТЗ 5.1.
+/// Источники: живой ответ zlmicro API (barcode 4923), RfPayloadEncoder
+/// (порт love-spouse-controller, MIT), HCI-логи mcontrol, OpenSpouse.
 ///
-/// Ключевые факты:
-/// - Устройство помнит последнюю команду по каналу и работает, пока
-///   получает broadcast; watchdog ~800–1000 мс — паузы требуют явного СТОП.
-/// - 9 паттернов на канал + стоп (индекс 0).
-/// - Семейства различаются префиксом; команды внутри семейства общие.
+/// Ключевой факт: сырой 5-байтовый префикс из API (wbMSE = 77 62 4d 53 45)
+/// прогоняется через get_rf_payload и даёт эфирный префикс
+/// 6DB643CE97FE427C. Команды — однобайтовые: 0x00 стоп, 0x01–0x09 паттерны.
 library;
 
+import '../ble/rf_payload_encoder.dart';
 import '../models/device_profile.dart';
 
-/// Семейство устройств: префикс + проверенные каналы.
+/// Семейство устройств: эфирный префикс + проверенные каналы.
 class DeviceFamily {
   const DeviceFamily({
     required this.id,
@@ -31,65 +30,72 @@ class DeviceFamily {
   final String? note;
 }
 
-/// Известные семейства с проверенными командами.
 abstract final class KnownDevices {
-  // ── Семейство 6DB643CE97FE427C (barcode 3711 и совместимые) ─────────
-  // Команды из HCI-логов mcontrol (Pixel 6a, подтверждено на железе)
-  // и OpenSpouse PROTOCOL.md. 9 паттернов + стоп на канал.
+  /// Сырой префикс семейства wbMSE из API (ASCII "wbMSE").
+  static const List<int> rawWbMse = <int>[0x77, 0x62, 0x4D, 0x53, 0x45];
 
-  /// Общий канал «Всё» (оба мотора сразу).
+  /// Эфирные команды общего канала, посчитанные RfPayloadEncoder
+  /// из сырых 0x00–0x09 (контрольный вектор сверен с ТЗ).
   static const List<String> allSteps = <String>[
-    'E5157D', // 0 стоп
-    'E49C6C', // 1
-    'E7076D', // 2
-    'E68E4F', // 3
-    'E13579', // 4
-    'E0BC68', // 5
-    'E3275A', // 6
-    'E2AE4B', // 7
-    'ED59B3', // 8
-    'ECD0A2', // 9
+    'E5157D', // 0x00 стоп
+    'E49C6C', // 0x01
+    'E7075E', // 0x02
+    'E68E4F', // 0x03
+    'E1313B', // 0x04
+    'E0B82A', // 0x05
+    'E32318', // 0x06
+    'E2AA09', // 0x07
+    'ED5DF1', // 0x08
+    'ECD4E0', // 0x09
   ];
 
-  /// Канал «Толчки» (CH1, stroke).
+  /// Канал «Толчки» (CH1) — HCI-логи mcontrol.
   static const List<String> strokeSteps = <String>[
-    'D5964C', // 0 стоп
-    'D41F5D', // 1
-    'D7846F', // 2
-    'D60D7E', // 3
-    'D1B20A', // 4
-    'D03B1B', // 5
-    'D3A029', // 6
-    'D22938', // 7
-    'DDDEC0', // 8
-    'DC57D1', // 9
+    'D5964C', 'D41F5D', 'D7846F', 'D60D7E', 'D1B20A',
+    'D03B1B', 'D3A029', 'D22938', 'DDDEC0', 'DC57D1',
   ];
 
-  /// Канал «Вибрация» (CH2, vibe).
+  /// Канал «Вибрация» (CH2) — HCI-логи mcontrol.
   static const List<String> vibeSteps = <String>[
-    'A5113F', // 0 стоп
-    'A4982E', // 1
-    'A7031C', // 2
-    'A68A0D', // 3
-    'A13579', // 4
-    'A0BC68', // 5
-    'A3275A', // 6
-    'A2AE4B', // 7
-    'AD59B3', // 8
-    'ACD0A2', // 9
+    'A5113F', 'A4982E', 'A7031C', 'A68A0D', 'A13579',
+    'A0BC68', 'A3275A', 'A2AE4B', 'AD59B3', 'ACD0A2',
   ];
 
   static List<PresetCommand> _presets(List<String> steps) => <PresetCommand>[
         for (var i = 1; i < steps.length; i++)
           PresetCommand(
             id: 'p$i',
-            label: 'Паттерн $i',
+            label: 'Режим $i',
             cmdHex: steps[i],
             icon: 'speed_$i',
           ),
       ];
 
-  /// Двухканальное устройство 6DB643CE97FE427C (толчки + вибрация).
+  /// Строит каналы из сырого префикса API на лету (get_rf_payload).
+  /// Работает для любого семейства, включая редкие модели и клоны.
+  static List<DeviceChannel> channelsFromRawPrefix(List<int> raw) {
+    String cmd(int rawByte) {
+      final bytes = RfPayloadEncoder.encodeCommand(raw, rawByte);
+      return bytes
+          .sublist(8)
+          .map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
+          .join();
+    }
+
+    final steps = <String>[for (var i = 0; i <= 9; i++) cmd(i)];
+    return <DeviceChannel>[
+      DeviceChannel(
+        id: 'ch_1',
+        name: 'Мотор 1',
+        type: ChannelType.vibrate,
+        stopCmdHex: steps.first,
+        intensityStepsHex: steps,
+        presets: _presets(steps),
+      ),
+    ];
+  }
+
+  /// Двухканальное устройство (толчки + вибрация), эфирный префикс.
   static DeviceFamily dualMotor() => DeviceFamily(
         id: 'dual-6db6',
         name: 'Два мотора (толчки + вибрация)',
@@ -115,67 +121,25 @@ abstract final class KnownDevices {
         ],
       );
 
-  /// Одноканальное устройство того же семейства (общий канал).
+  /// Одноканальное устройство массового семейства (9 паттернов).
   static DeviceFamily singleMotor() => DeviceFamily(
         id: 'single-6db6',
         name: 'Один мотор (9 паттернов)',
         prefixHex: '6DB643CE97FE427C',
-        note: 'Команды общего канала из OpenSpouse PROTOCOL.md.',
-        channels: <DeviceChannel>[
-          DeviceChannel(
-            id: 'ch_all',
-            name: 'Вибрация',
-            type: ChannelType.vibrate,
-            stopCmdHex: allSteps.first,
-            intensityStepsHex: allSteps,
-            presets: _presets(allSteps),
-          ),
-        ],
+        note: 'Команды посчитаны из сырых 0x00–0x09 (Fastcon).',
+        channels: channelsFromRawPrefix(rawWbMse),
       );
 
-  // ── Семейство wbMSE (77624D5345, barcode 4923 и др.) ────────────────
-  // Префикс из живого ответа zlmicro API для barcode 4923.
-  // Команды этого семейства отличаются от 6DB6; для точных значений
-  // нужен HCI-лог или Command Hunter. Базовый стоп и режим 1 известны
-  // из открытых контроллеров (love-spouse-controller: STOP=0x00,
-  // MODE1=0x01 в сыром виде до скремблирования).
-
-  static DeviceFamily wbMse() => DeviceFamily(
-        id: 'wbmse-4923',
-        name: 'wbMSE (barcode 4923, AAGS079)',
-        prefixHex: '77624D5345',
-        note: 'Префикс из API. Команды уточняются через Command Hunter — '
-            'семейство использует иное скремблирование.',
-        channels: <DeviceChannel>[
-          DeviceChannel(
-            id: 'ch_1',
-            name: 'Мотор 1',
-            type: ChannelType.vibrate,
-            stopCmdHex: allSteps.first,
-            intensityStepsHex: allSteps,
-            presets: _presets(allSteps),
-          ),
-          DeviceChannel(
-            id: 'ch_2',
-            name: 'Мотор 2',
-            type: ChannelType.vibrate,
-            stopCmdHex: allSteps.first,
-            intensityStepsHex: allSteps,
-            presets: _presets(allSteps),
-          ),
-        ],
-      );
-
-  /// Все известные семейства.
+  /// Все известные семейства для оффлайн-базы.
   static List<DeviceFamily> all() => <DeviceFamily>[
-        dualMotor(),
         singleMotor(),
-        wbMse(),
+        dualMotor(),
       ];
 
-  /// Находит семейство по префиксу (нормализованный HEX).
+  /// Находит семейство по эфирному префиксу.
   static DeviceFamily? byPrefix(String prefixHex) {
-    final normalized = prefixHex.replaceAll(RegExp('[^0-9a-fA-F]'), '').toUpperCase();
+    final normalized =
+        prefixHex.replaceAll(RegExp('[^0-9a-fA-F]'), '').toUpperCase();
     for (final family in all()) {
       if (family.prefixHex == normalized) return family;
     }

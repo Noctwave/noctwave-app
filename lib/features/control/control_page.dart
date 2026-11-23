@@ -202,7 +202,10 @@ class _ControlPageState extends State<ControlPage> {
     if (channel == null) return;
     _startSession();
     _recorder.record(channel.id, commandHex);
-    await _scheduler.sendBurstCommand(
+    // Непрерывная передача: у устройства watchdog ~800 мс — одиночный
+    // burst 350 мс заставил бы мотор глохнуть. Режим держим в эфире,
+    // пока не пришёл СТОП или другой режим.
+    await _scheduler.updateDynamicCommand(
       prefixHex: widget.device.broadcastPrefixHex,
       commandHex: commandHex,
       manufacturerId: widget.device.manufacturerId,
@@ -211,10 +214,6 @@ class _ControlPageState extends State<ControlPage> {
     setState(() {
       _txActive = true;
       _lastCommandHex = commandHex;
-    });
-    // Индикатор TX гаснет после burst-окна.
-    Future<void>.delayed(const Duration(milliseconds: 350), () {
-      if (mounted) setState(() => _txActive = false);
     });
   }
 
@@ -338,8 +337,8 @@ class _ControlPageState extends State<ControlPage> {
   Future<void> _emergencyStop() async {
     final channel = _channel;
     if (channel == null) return;
-    _haptic(HapticFeedbackType.heavy); // усиленный двойной импульс
-    unawaited(HapticFeedback.vibrate());
+    // Один тактильный импульс на СТОП (без двойной вибрации).
+    _haptic(HapticFeedbackType.heavy);
     await _scheduler.stop(
       prefixHex: widget.device.broadcastPrefixHex,
       stopCmdHex: channel.stopCmdHex,
@@ -372,10 +371,9 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   Future<bool> _onWillPop() async {
-    // Авто-СТОП при выходе — по настройке Профиля (ТЗ 3.2.3).
-    if (_settings.autoStopOnExit) {
-      await _emergencyStop();
-    }
+    // При выходе из управления всегда шлём СТОП: непрерывная передача
+    // не должна оставлять мотор включённым после закрытия экрана.
+    await _emergencyStop();
     return true;
   }
 
@@ -688,86 +686,71 @@ class _ControlPageState extends State<ControlPage> {
       return const Center(child: Text('У устройства нет каналов'));
     }
     final steps = channel.intensityStepsHex
-        .skip(1) // индекс 0 — стоп, отдельная кнопка
+        .skip(1) // индекс 0 — стоп, отдельная кнопка в доке
         .toList();
-    return Column(
+    final maxHex = channel.intensityStepsHex.last;
+    return GridView.count(
+      padding: const EdgeInsets.all(16),
+      crossAxisCount: 3,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 1.0,
       children: <Widget>[
-        Expanded(
-          child: GridView.count(
-            padding: const EdgeInsets.all(16),
-            crossAxisCount: 3,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.1,
-            children: <Widget>[
-              for (var i = 0; i < steps.length; i++)
-                PulsingActive(
-                  intensity: _lastCommandHex == steps[i] ? (i + 1) / steps.length : 0,
-                  enabled: _settings.pulseAnimation,
-                  child: _ModeTile(
-                    label: 'Режим ${i + 1}',
-                    sublabel: steps[i],
-                    active: _lastCommandHex == steps[i],
-                    intensity: (i + 1) / steps.length,
-                    onTap: () {
-                      _haptic(HapticFeedbackType.light);
-                      unawaited(_sendCommand(steps[i]));
-                    },
-                  ),
-                ),
-              for (final preset in channel.presets)
-                PulsingActive(
-                  intensity: _lastCommandHex == preset.cmdHex ? 0.5 : 0,
-                  enabled: _settings.pulseAnimation,
-                  child: _ModeTile(
-                    label: preset.label,
-                    sublabel: preset.cmdHex,
-                    active: _lastCommandHex == preset.cmdHex,
-                    intensity: 0.5,
-                    onTap: () {
-                      _haptic(HapticFeedbackType.light);
-                      unawaited(_sendCommand(preset.cmdHex));
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: SizedBox(
-            width: double.infinity,
-            child: GestureDetector(
-              // Hold-to-Boost (ТЗ 4.1): удержание — максимум,
-              // отпускание — предыдущая активная команда.
-              onLongPressStart: (_) => unawaited(_holdBoostStart()),
-              onLongPressEnd: (_) => unawaited(_holdBoostRelease()),
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: NoctwavePalette.accentHigh,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                icon: const Icon(Icons.bolt),
-                label: const Text('Удерживай — максимум'),
-                onPressed: () {},
-              ),
+        for (var i = 0; i < steps.length; i++)
+          PulsingActive(
+            intensity: _lastCommandHex == steps[i] ? (i + 1) / steps.length : 0,
+            enabled: _settings.pulseAnimation,
+            child: _ModeTile(
+              label: 'Режим ${i + 1}',
+              icon: _modeIcon(i + 1),
+              active: _lastCommandHex == steps[i],
+              intensity: (i + 1) / steps.length,
+              onTap: () => unawaited(_sendCommand(steps[i])),
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Text(
-            'Зажми кнопку — устройство выдаст максимум. '
-            'Отпустишь — вернётся прежний режим.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 12,
-              color: NoctwaveColors.of(context).textSecondary,
-            ),
+        // «Максимум» — последняя плитка сетки (не отдельная кнопка).
+        // Тап = максимум; удержание = буст с возвратом при отпускании.
+        PulsingActive(
+          intensity: _lastCommandHex == maxHex ? 1 : 0,
+          enabled: _settings.pulseAnimation,
+          child: _ModeTile(
+            label: 'Максимум',
+            icon: Icons.bolt,
+            active: _lastCommandHex == maxHex,
+            intensity: 1,
+            onTap: () => unawaited(_sendCommand(maxHex)),
+            onHoldStart: () => unawaited(_holdBoostStart()),
+            onHoldEnd: () => unawaited(_holdBoostRelease()),
           ),
         ),
       ],
     );
+  }
+
+  /// Иконка режима по номеру (как в официальном приложении).
+  IconData _modeIcon(int n) {
+    switch (n) {
+      case 1:
+        return Icons.air;
+      case 2:
+        return Icons.filter_vintage;
+      case 3:
+        return Icons.waves;
+      case 4:
+        return Icons.swap_calls;
+      case 5:
+        return Icons.local_fire_department;
+      case 6:
+        return Icons.cyclone;
+      case 7:
+        return Icons.water_drop;
+      case 8:
+        return Icons.blur_circular;
+      case 9:
+        return Icons.grass;
+      default:
+        return Icons.toys_outlined;
+    }
   }
 
   Widget _placeholderMode(String mode) {
@@ -878,73 +861,77 @@ class _ControlPageState extends State<ControlPage> {
   }
 }
 
-/// Плитка режима пульта с динамическим акцентом по интенсивности.
+/// Плитка режима пульта: иконка + подпись, динамический акцент.
 class _ModeTile extends StatelessWidget {
   const _ModeTile({
     required this.label,
-    required this.sublabel,
+    required this.icon,
     required this.active,
     required this.intensity,
     required this.onTap,
+    this.onHoldStart,
+    this.onHoldEnd,
   });
 
   final String label;
-  final String sublabel;
+  final IconData icon;
   final bool active;
   final double intensity;
   final VoidCallback onTap;
+  final VoidCallback? onHoldStart;
+  final VoidCallback? onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
     final accent = NoctwavePalette.accentForIntensity(intensity);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
-        color: NoctwavePalette.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: active ? accent : NoctwavePalette.outline,
-          width: active ? 1.5 : 1,
-        ),
-        boxShadow: active
-            ? <BoxShadow>[
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.25),
-                  blurRadius: 16,
-                ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
+    final colors = NoctwaveColors.of(context);
+    return GestureDetector(
+      onLongPressStart: onHoldStart == null ? null : (_) => onHoldStart!(),
+      onLongPressEnd: onHoldEnd == null ? null : (_) => onHoldEnd!(),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: colors.surface,
           borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: active ? accent : NoctwaveColors.of(context).textPrimary,
+          border: Border.all(
+            color: active ? accent : colors.outline,
+            width: active ? 1.5 : 1,
+          ),
+          boxShadow: active
+              ? <BoxShadow>[
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.25),
+                    blurRadius: 16,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  sublabel,
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: NoctwaveColors.of(context).textSecondary,
-                    fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                ]
+              : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(icon,
+                      size: 30,
+                      color: active ? accent : colors.textPrimary),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: active ? accent : colors.textPrimary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

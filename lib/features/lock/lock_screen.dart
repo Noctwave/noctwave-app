@@ -32,7 +32,6 @@ class _LockScreenState extends State<LockScreen> {
   @override
   void initState() {
     super.initState();
-    // Если включена биометрия — сразу предлагаем её.
     if (widget.settings.biometricUnlock) {
       unawaited(_tryBiometric());
     }
@@ -50,7 +49,6 @@ class _LockScreenState extends State<LockScreen> {
       _error = null;
       _pin.write(digit);
     });
-    // PIN из 4–6 цифр: проверяем по достижении 4, ждём до 6.
     if (_pin.length >= 4) {
       _checkPin();
     }
@@ -89,55 +87,66 @@ class _LockScreenState extends State<LockScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
-        child: Column(
-          children: <Widget>[
-            const Spacer(flex: 2),
-            Icon(Icons.lock_outline, size: 48, color: colors.textSecondary),
-            const SizedBox(height: 16),
-            Text(
-              'Noctwave заблокирован',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            if (hasPin)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List<Widget>.generate(6, (i) {
-                  final filled = i < _pin.length;
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 6),
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: filled
-                          ? Theme.of(context).colorScheme.primary
-                          : colors.outline,
-                    ),
-                  );
-                }),
+        child: SizedBox(
+          width: double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              const Spacer(flex: 2),
+              Icon(Icons.lock_outline, size: 48, color: colors.textSecondary),
+              const SizedBox(height: 16),
+              Text(
+                'Noctwave заблокирован',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-            if (_error != null) ...<Widget>[
-              const SizedBox(height: 12),
-              Text(_error!,
-                  style: const TextStyle(color: NoctwavePalette.stop)),
+              const SizedBox(height: 16),
+              if (hasPin)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List<Widget>.generate(6, (i) {
+                    final filled = i < _pin.length;
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: filled
+                            ? Theme.of(context).colorScheme.primary
+                            : colors.outline,
+                      ),
+                    );
+                  }),
+                ),
+              if (_error != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(_error!,
+                    style: const TextStyle(color: NoctwavePalette.stop)),
+              ],
+              const Spacer(flex: 2),
+              if (widget.settings.biometricUnlock)
+                TextButton.icon(
+                  icon: Icon(Icons.fingerprint,
+                      color: Theme.of(context).colorScheme.primary),
+                  label: Text(
+                    'FaceID / TouchID',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary),
+                  ),
+                  onPressed: () {
+                    _biometricTried = false;
+                    unawaited(_tryBiometric());
+                  },
+                ),
+              if (hasPin) ...<Widget>[
+                const SizedBox(height: 8),
+                _keypad(colors),
+              ],
+              const Spacer(),
             ],
-            const Spacer(),
-            if (widget.settings.biometricUnlock)
-              TextButton.icon(
-                icon: const Icon(Icons.fingerprint),
-                label: const Text('FaceID / TouchID'),
-                onPressed: () {
-                  _biometricTried = false;
-                  unawaited(_tryBiometric());
-                },
-              ),
-            if (hasPin) ...<Widget>[
-              const SizedBox(height: 8),
-              _keypad(colors),
-            ],
-            const Spacer(),
-          ],
+          ),
         ),
       ),
     );
@@ -145,7 +154,7 @@ class _LockScreenState extends State<LockScreen> {
 
   Widget _keypad(NoctwaveColors colors) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
         children: <Widget>[
           for (final row in <List<String>>[
@@ -155,14 +164,14 @@ class _LockScreenState extends State<LockScreen> {
             <String>['', '0', '⌫'],
           ])
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: <Widget>[
                   for (final key in row)
                     SizedBox(
                       width: 72,
-                      height: 56,
+                      height: 52,
                       child: key.isEmpty
                           ? const SizedBox.shrink()
                           : TextButton(

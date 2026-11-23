@@ -34,8 +34,8 @@ void main() {
     expect(find.text('REC'), findsOneWidget);
     expect(find.text('СТОП'), findsOneWidget);
     expect(find.text('TX'), findsOneWidget);
-    expect(find.text('Удерживай — максимум'), findsOneWidget);
-    expect(find.text('Слабо'), findsOneWidget);
+    expect(find.text('Максимум'), findsOneWidget);
+    expect(find.text('Режим 1'), findsOneWidget);
   });
 
   testWidgets('Экран управления без каналов показывает заглушку',

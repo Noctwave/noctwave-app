@@ -250,8 +250,7 @@ class _DevicesPageState extends State<DevicesPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
-                      Icon(Icons.toys_outlined,
-                          color: Theme.of(context).colorScheme.primary, size: 28),
+                      _DeviceAvatar(device: device),
                       // Большая зона тапа (44×44), без ripple-анимации.
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -309,6 +308,33 @@ class _DevicesPageState extends State<DevicesPage> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Аватар устройства: картинка из API (Pics), иначе иконка-заглушка.
+class _DeviceAvatar extends StatelessWidget {
+  const _DeviceAvatar({required this.device});
+
+  final DeviceProfile device;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = device.localImagePath;
+    final fallback = Icon(Icons.toys_outlined,
+        color: Theme.of(context).colorScheme.primary, size: 28);
+    if (url == null || url.isEmpty) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        url,
+        width: 40,
+        height: 40,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stack) => fallback,
+        loadingBuilder: (_, child, progress) =>
+            progress == null ? child : fallback,
+      ),
     );
   }
 }

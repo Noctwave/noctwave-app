@@ -27,14 +27,16 @@ void main() {
       final profile = ZlmicroApi.parseProductResponse('4923', realResponse);
       expect(profile.name, 'AAGS079');
       expect(profile.barcode, '4923');
-      expect(profile.broadcastPrefixHex, '77624D5345');
+      // Сырой wbMSE (77624D5345) → эфирный префикс через get_rf_payload.
+      expect(profile.broadcastPrefixHex, '6DB643CE97FE427C');
       expect(profile.localImagePath, contains('image.zlmicro.com'));
     });
 
-    test('префикс 77624D5345 находит семейство wbMSE с каналами', () {
+    test('сырой префикс wbMSE даёт канал с 9 паттернами (0x00-0x09)', () {
       final profile = ZlmicroApi.parseProductResponse('4923', realResponse);
-      expect(profile.channels.length, 2);
-      expect(profile.channels.first.intensityStepsHex.length, 10);
+      expect(profile.channels.single.intensityStepsHex.length, 10);
+      expect(profile.channels.single.intensityStepsHex[1], 'E49C6C');
+      expect(profile.channels.single.stopCmdHex, 'E5157D');
     });
 
     test('пустой ответ даёт профиль-черновик с 9 паттернами', () {
@@ -85,10 +87,9 @@ void main() {
           isNot(family.channels[1].stopCmdHex));
     });
 
-    test('byPrefix находит wbMSE по нормализованному префиксу', () {
-      expect(KnownDevices.byPrefix('77624D5345')?.id, 'wbmse-4923');
-      expect(KnownDevices.byPrefix('77 62 4d 53 45')?.id, 'wbmse-4923');
-      expect(KnownDevices.byPrefix('6db643ce97fe427c')?.id, 'dual-6db6');
+    test('byPrefix находит семейства по эфирному префиксу', () {
+      expect(KnownDevices.byPrefix('6db643ce97fe427c')?.id, 'single-6db6');
+      expect(KnownDevices.byPrefix('6DB643CE97FE427C')?.id, 'single-6db6');
     });
 
     test('byPrefix: неизвестный префикс → null', () {

@@ -13,17 +13,17 @@
           "name": "Вибрация",
           "type": "vibrate",
           "stopCmdHex": "E5157D",
-          "intensityStepsHex": ["E5157D", "E49C6C", "E7076D", "E68E4F", "E13579", "E0BC68", "E3275A", "E2AE4B", "ED59B3", "ECD0A2"],
+          "intensityStepsHex": ["E5157D", "E49C6C", "E7075E", "E68E4F", "E1313B", "E0B82A", "E32318", "E2AA09", "ED5DF1", "ECD4E0"],
           "presets": [
-            { "id": "p1", "label": "Паттерн 1", "cmdHex": "E49C6C", "icon": "speed_1", "isCustom": false },
-            { "id": "p2", "label": "Паттерн 2", "cmdHex": "E7076D", "icon": "speed_2", "isCustom": false },
-            { "id": "p3", "label": "Паттерн 3", "cmdHex": "E68E4F", "icon": "speed_3", "isCustom": false },
-            { "id": "p4", "label": "Паттерн 4", "cmdHex": "E13579", "icon": "speed_4", "isCustom": false },
-            { "id": "p5", "label": "Паттерн 5", "cmdHex": "E0BC68", "icon": "speed_5", "isCustom": false },
-            { "id": "p6", "label": "Паттерн 6", "cmdHex": "E3275A", "icon": "speed_6", "isCustom": false },
-            { "id": "p7", "label": "Паттерн 7", "cmdHex": "E2AE4B", "icon": "speed_7", "isCustom": false },
-            { "id": "p8", "label": "Паттерн 8", "cmdHex": "ED59B3", "icon": "speed_8", "isCustom": false },
-            { "id": "p9", "label": "Паттерн 9", "cmdHex": "ECD0A2", "icon": "speed_9", "isCustom": false }
+            { "id": "p1", "label": "Режим 1", "cmdHex": "E49C6C", "icon": "speed_1", "isCustom": false },
+            { "id": "p2", "label": "Режим 2", "cmdHex": "E7075E", "icon": "speed_2", "isCustom": false },
+            { "id": "p3", "label": "Режим 3", "cmdHex": "E68E4F", "icon": "speed_3", "isCustom": false },
+            { "id": "p4", "label": "Режим 4", "cmdHex": "E1313B", "icon": "speed_4", "isCustom": false },
+            { "id": "p5", "label": "Режим 5", "cmdHex": "E0B82A", "icon": "speed_5", "isCustom": false },
+            { "id": "p6", "label": "Режим 6", "cmdHex": "E32318", "icon": "speed_6", "isCustom": false },
+            { "id": "p7", "label": "Режим 7", "cmdHex": "E2AA09", "icon": "speed_7", "isCustom": false },
+            { "id": "p8", "label": "Режим 8", "cmdHex": "ED5DF1", "icon": "speed_8", "isCustom": false },
+            { "id": "p9", "label": "Режим 9", "cmdHex": "ECD4E0", "icon": "speed_9", "isCustom": false }
           ]
         }
       ]
@@ -41,15 +41,15 @@
           "stopCmdHex": "D5964C",
           "intensityStepsHex": ["D5964C", "D41F5D", "D7846F", "D60D7E", "D1B20A", "D03B1B", "D3A029", "D22938", "DDDEC0", "DC57D1"],
           "presets": [
-            { "id": "p1", "label": "Паттерн 1", "cmdHex": "D41F5D", "icon": "speed_1", "isCustom": false },
+            { "id": "p1", "label": "Режим 1", "cmdHex": "D41F5D", "icon": "speed_1", "isCustom": false },
             { "id": "p2", "label": "Паттерн 2", "cmdHex": "D7846F", "icon": "speed_2", "isCustom": false },
-            { "id": "p3", "label": "Паттерн 3", "cmdHex": "D60D7E", "icon": "speed_3", "isCustom": false },
+            { "id": "p3", "label": "Режим 3", "cmdHex": "D60D7E", "icon": "speed_3", "isCustom": false },
             { "id": "p4", "label": "Паттерн 4", "cmdHex": "D1B20A", "icon": "speed_4", "isCustom": false },
             { "id": "p5", "label": "Паттерн 5", "cmdHex": "D03B1B", "icon": "speed_5", "isCustom": false },
             { "id": "p6", "label": "Паттерн 6", "cmdHex": "D3A029", "icon": "speed_6", "isCustom": false },
             { "id": "p7", "label": "Паттерн 7", "cmdHex": "D22938", "icon": "speed_7", "isCustom": false },
             { "id": "p8", "label": "Паттерн 8", "cmdHex": "DDDEC0", "icon": "speed_8", "isCustom": false },
-            { "id": "p9", "label": "Паттерн 9", "cmdHex": "DC57D1", "icon": "speed_9", "isCustom": false }
+            { "id": "p9", "label": "Режим 9", "cmdHex": "DC57D1", "icon": "speed_9", "isCustom": false }
           ]
         },
         {
@@ -59,15 +59,15 @@
           "stopCmdHex": "A5113F",
           "intensityStepsHex": ["A5113F", "A4982E", "A7031C", "A68A0D", "A13579", "A0BC68", "A3275A", "A2AE4B", "AD59B3", "ACD0A2"],
           "presets": [
-            { "id": "p1", "label": "Паттерн 1", "cmdHex": "A4982E", "icon": "speed_1", "isCustom": false },
+            { "id": "p1", "label": "Режим 1", "cmdHex": "A4982E", "icon": "speed_1", "isCustom": false },
             { "id": "p2", "label": "Паттерн 2", "cmdHex": "A7031C", "icon": "speed_2", "isCustom": false },
-            { "id": "p3", "label": "Паттерн 3", "cmdHex": "A68A0D", "icon": "speed_3", "isCustom": false },
+            { "id": "p3", "label": "Режим 3", "cmdHex": "A68A0D", "icon": "speed_3", "isCustom": false },
             { "id": "p4", "label": "Паттерн 4", "cmdHex": "A13579", "icon": "speed_4", "isCustom": false },
             { "id": "p5", "label": "Паттерн 5", "cmdHex": "A0BC68", "icon": "speed_5", "isCustom": false },
             { "id": "p6", "label": "Паттерн 6", "cmdHex": "A3275A", "icon": "speed_6", "isCustom": false },
             { "id": "p7", "label": "Паттерн 7", "cmdHex": "A2AE4B", "icon": "speed_7", "isCustom": false },
             { "id": "p8", "label": "Паттерн 8", "cmdHex": "AD59B3", "icon": "speed_8", "isCustom": false },
-            { "id": "p9", "label": "Паттерн 9", "cmdHex": "ACD0A2", "icon": "speed_9", "isCustom": false }
+            { "id": "p9", "label": "Режим 9", "cmdHex": "ACD0A2", "icon": "speed_9", "isCustom": false }
           ]
         }
       ]
@@ -83,11 +83,11 @@
           "name": "Мотор 1",
           "type": "vibrate",
           "stopCmdHex": "E5157D",
-          "intensityStepsHex": ["E5157D", "E49C6C", "E7076D", "E68E4F", "E13579", "E0BC68", "E3275A", "E2AE4B", "ED59B3", "ECD0A2"],
+          "intensityStepsHex": ["E5157D", "E49C6C", "E7075E", "E68E4F", "E1313B", "E0B82A", "E32318", "E2AA09", "ED5DF1", "ECD4E0"],
           "presets": [
-            { "id": "p1", "label": "Паттерн 1", "cmdHex": "E49C6C", "icon": "speed_1", "isCustom": false },
-            { "id": "p3", "label": "Паттерн 3", "cmdHex": "E68E4F", "icon": "speed_3", "isCustom": false },
-            { "id": "p9", "label": "Паттерн 9", "cmdHex": "ECD0A2", "icon": "speed_9", "isCustom": false }
+            { "id": "p1", "label": "Режим 1", "cmdHex": "E49C6C", "icon": "speed_1", "isCustom": false },
+            { "id": "p3", "label": "Режим 3", "cmdHex": "E68E4F", "icon": "speed_3", "isCustom": false },
+            { "id": "p9", "label": "Режим 9", "cmdHex": "ECD4E0", "icon": "speed_9", "isCustom": false }
           ]
         },
         {
@@ -95,11 +95,11 @@
           "name": "Мотор 2",
           "type": "vibrate",
           "stopCmdHex": "E5157D",
-          "intensityStepsHex": ["E5157D", "E49C6C", "E7076D", "E68E4F", "E13579", "E0BC68", "E3275A", "E2AE4B", "ED59B3", "ECD0A2"],
+          "intensityStepsHex": ["E5157D", "E49C6C", "E7075E", "E68E4F", "E1313B", "E0B82A", "E32318", "E2AA09", "ED5DF1", "ECD4E0"],
           "presets": [
-            { "id": "p1", "label": "Паттерн 1", "cmdHex": "E49C6C", "icon": "speed_1", "isCustom": false },
-            { "id": "p3", "label": "Паттерн 3", "cmdHex": "E68E4F", "icon": "speed_3", "isCustom": false },
-            { "id": "p9", "label": "Паттерн 9", "cmdHex": "ECD0A2", "icon": "speed_9", "isCustom": false }
+            { "id": "p1", "label": "Режим 1", "cmdHex": "E49C6C", "icon": "speed_1", "isCustom": false },
+            { "id": "p3", "label": "Режим 3", "cmdHex": "E68E4F", "icon": "speed_3", "isCustom": false },
+            { "id": "p9", "label": "Режим 9", "cmdHex": "ECD4E0", "icon": "speed_9", "isCustom": false }
           ]
         }
       ]
@@ -128,7 +128,7 @@
     },
     {
       "name": "Общий канал (9 паттернов)",
-      "commands": ["E5157D", "E49C6C", "E7076D", "E68E4F", "E13579", "E0BC68", "E3275A", "E2AE4B", "ED59B3", "ECD0A2"]
+      "commands": ["E5157D", "E49C6C", "E7075E", "E68E4F", "E1313B", "E0B82A", "E32318", "E2AA09", "ED5DF1", "ECD4E0"]
     },
     {
       "name": "Толчки CH1 (9 паттернов)",

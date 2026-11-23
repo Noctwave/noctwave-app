@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../ble/rf_payload_encoder.dart';
 import '../data/known_devices.dart';
 import '../models/device_profile.dart';
 
@@ -87,33 +88,28 @@ class ZlmicroApi {
         ? deviceTitle
         : (title.isNotEmpty ? 'Модель #$title' : 'Модель #$barcode');
 
-    // BroadcastPrefix приходит как "77 62 4d 53 45" — нормализуем.
+    // BroadcastPrefix приходит как "77 62 4d 53 45" — это СЫРОЙ префикс.
+    // Эфирный префикс и команды считаются через get_rf_payload (Fastcon).
     final rawPrefix = (data['BroadcastPrefix'] ?? '').toString();
-    final prefix = rawPrefix.replaceAll(RegExp('[^0-9a-fA-F]'), '').toUpperCase();
+    final rawClean = rawPrefix.replaceAll(RegExp('[^0-9a-fA-F]'), '');
+    final rawBytes = <int>[
+      for (var i = 0; i + 1 < rawClean.length; i += 2)
+        int.parse(rawClean.substring(i, i + 2), radix: 16),
+    ];
 
     final pics = (data['Pics'] ?? '').toString();
 
-    // Подбираем проверенные каналы по известному семейству префикса.
-    final family = KnownDevices.byPrefix(prefix);
-    final channels = family?.channels ??
-        <DeviceChannel>[
-          DeviceChannel(
-            id: 'ch_1',
-            name: 'Канал 1',
-            type: ChannelType.vibrate,
-            stopCmdHex: KnownDevices.allSteps.first,
-            intensityStepsHex: KnownDevices.allSteps,
-            presets: <PresetCommand>[
-              for (var i = 1; i < KnownDevices.allSteps.length; i++)
-                PresetCommand(
-                  id: 'p$i',
-                  label: 'Паттерн $i',
-                  cmdHex: KnownDevices.allSteps[i],
-                  icon: 'speed_$i',
-                ),
-            ],
-          ),
-        ];
+    // Эфирный префикс из сырого (wbMSE → 6DB643CE97FE427C).
+    final airPrefix = rawBytes.length == 5
+        ? RfPayloadEncoder.airPrefixHex(rawBytes)
+        : (rawClean.length == 16 ? rawClean.toUpperCase() : '');
+
+    // Каналы: для 5-байтового сырого префикса считаем на лету,
+    // иначе подбираем проверенное семейство по эфирному префиксу.
+    final family = KnownDevices.byPrefix(airPrefix);
+    final channels = rawBytes.length == 5
+        ? KnownDevices.channelsFromRawPrefix(rawBytes)
+        : (family?.channels ?? KnownDevices.channelsFromRawPrefix(KnownDevices.rawWbMse));
 
     return DeviceProfile(
       id: 'import-$barcode-${DateTime.now().millisecondsSinceEpoch}',
@@ -121,7 +117,7 @@ class ZlmicroApi {
       name: name,
       localImagePath: pics.isEmpty ? null : pics,
       broadcastPrefixHex:
-          prefix.isEmpty ? '6DB643CE97FE427C' : prefix,
+          airPrefix.isEmpty ? '6DB643CE97FE427C' : airPrefix,
       manufacturerId: family?.manufacturerId ?? 0xFFF0,
       channels: channels,
       createdAt: DateTime.now().toUtc(),
