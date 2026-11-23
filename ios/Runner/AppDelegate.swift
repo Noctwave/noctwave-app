@@ -12,6 +12,9 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    BleAdvertiserPlugin.register(with: engineBridge.pluginRegistry)
+    // pluginRegistry — это FlutterPluginRegistry; плагину нужен registrar.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BleAdvertiserPlugin") {
+      BleAdvertiserPlugin.register(with: registrar)
+    }
   }
 }
