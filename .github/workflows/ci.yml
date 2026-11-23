@@ -203,6 +203,7 @@ jobs:
             --version "${{ needs.resolve.outputs.version }}" \
             --build-number "${{ needs.resolve.outputs.build_id }}" \
             --commit-sha "${{ needs.resolve.outputs.commit_sha }}" \
+            --target "${{ github.sha }}" \
             --repo "${{ github.repository }}" \
             --apk "$APK" --ipa "$IPA"
 

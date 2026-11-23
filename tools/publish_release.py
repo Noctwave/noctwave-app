@@ -30,6 +30,10 @@ def main():
     ap.add_argument("--version", required=True)
     ap.add_argument("--build-number", type=int, required=True)
     ap.add_argument("--commit-sha", default="")
+    ap.add_argument("--target", default="main",
+                    help="target_commitish для создания релиза: ПОЛНЫЙ sha "
+                         "(40 символов) или имя ветки. Короткий sha "
+                         "отклоняется API с 422.")
     ap.add_argument("--repo", required=True)
     ap.add_argument("--apk", default=None)
     ap.add_argument("--ipa", default=None)
@@ -85,7 +89,7 @@ def main():
             run([
                 "gh", "release", "create", tag, "--repo", repo,
                 "--prerelease", "--title", title, "--notes", notes,
-                "--target", args.commit_sha or "main",
+                "--target", args.target,
             ])
         run([
             "gh", "release", "upload", tag, "--repo", repo, "--clobber", *files,
