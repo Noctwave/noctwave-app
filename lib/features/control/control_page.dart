@@ -10,6 +10,7 @@ import '../../core/ble/tx_scheduler.dart';
 import '../../core/engine/pattern_engine.dart';
 import '../../core/models/device_profile.dart';
 import '../../core/storage/local_store.dart';
+import '../../core/system/lifecycle_watcher.dart';
 import '../../core/system/system_controls.dart';
 import '../../core/theme/noctwave_theme.dart';
 import 'autopilot_mode.dart';
@@ -95,6 +96,17 @@ class _ControlPageState extends State<ControlPage> {
   Stream<(double, double, double)>? _accelerometerEvents;
   bool _sensorsProbed = false;
 
+  late final LifecycleWatcher _lifecycle = LifecycleWatcher(
+    onBackground: _onAppBackground,
+    onForeground: _onAppForeground,
+  );
+
+  /// Был ли показан баннер о сворачивании на iOS в этой сессии.
+  bool _backgroundWarned = false;
+
+  /// Шла ли передача в момент сворачивания.
+  bool _wasTransmitting = false;
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +116,40 @@ class _ControlPageState extends State<ControlPage> {
         unawaited(_emergencyStop());
       }
     };
+    _lifecycle.start();
+  }
+
+  /// iOS: сворачивание или блокировка экрана переносит ServiceUUIDs в
+  /// overflow area — пакет становится нечитаемым (ТЗ 5.3). Немедленно
+  /// останавливаем устройство, если передача шла, и предупреждаем один раз.
+  void _onAppBackground() {
+    _wasTransmitting = _lastCommandHex != null && _lastCommandHex != _channel?.stopCmdHex;
+    if (_wasTransmitting) {
+      unawaited(_emergencyStop());
+    }
+    if (!_backgroundWarned && !_oledLock) {
+      _backgroundWarned = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 5),
+            content: const Text(
+              'На iOS сворачивание приложения прерывает передачу команд. '
+              'Используйте OLED-замок (🌙), чтобы держать экран активным.',
+            ),
+            action: SnackBarAction(
+              label: 'OLED-замок',
+              onPressed: _toggleOledLock,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  void _onAppForeground() {
+    // Баннер показываем заново при следующем сворачивании.
+    _backgroundWarned = false;
   }
 
   /// Ленивая инициализация акселерометра: сенсор открывается только при
@@ -130,6 +176,7 @@ class _ControlPageState extends State<ControlPage> {
   @override
   void dispose() {
     _sessionTicker?.cancel();
+    _lifecycle.dispose();
     _systemControls.dispose();
     unawaited(_systemControls.setKeepScreenOn(false));
     unawaited(_scheduler.dispose());

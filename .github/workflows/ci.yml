@@ -164,6 +164,18 @@ jobs:
       - name: ⚙️ Disable Swift Package Manager
         run: flutter config --no-enable-swift-package-manager
 
+      # iOS — основной тестируемый канал: гоняем нативные unit-тесты
+      # (контрольный вектор XOR pre-whitening из ТЗ 5.3) до сборки.
+      - name: 🧪 iOS unit tests (RunnerTests, симулятор)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee xcodebuild-test.log | tail -40
+
       # CODE_SIGNING_ALLOWED/REQUIRED=NO — сборка без сертификата (подход
       # референсного krasava-app); Flutter передаёт их в xcodebuild.
       - name: 🔨 Build iOS (release, no codesign)

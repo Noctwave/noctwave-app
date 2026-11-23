@@ -15,17 +15,27 @@ class BleAdvertiserPlugin: NSObject, FlutterPlugin, CBPeripheralManagerDelegate 
     static let xorMask: [UInt8] = [0x94, 0xBE, 0x0A, 0xED, 0x39, 0x35, 0x83, 0xAD, 0x8B, 0x89, 0x40]
     static let terminator: UInt8 = 0x0B
 
+    /// Сильная ссылка на инстанс: registrar.addMethodCallDelegate держит
+    /// delegate слабо-неявно через канал, но CBPeripheralManager.delegate
+    /// — weak. Без этого инстанс умирает сразу после register.
+    private static var retainedInstance: BleAdvertiserPlugin?
+
     private var channel: FlutterMethodChannel?
     private var manager: CBPeripheralManager?
     private var burstTimer: Timer?
     private var pendingResult: FlutterResult?
     private var pendingPayload: [CBUUID]?
+    private var pendingDurationMs: Int = 0
 
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: channelName, binaryMessenger: registrar.messenger())
         let instance = BleAdvertiserPlugin()
         instance.channel = channel
         registrar.addMethodCallDelegate(instance, channel: channel)
+        retainedInstance = instance
+        // Менеджер создаём сразу: первый запрос состояния и реклама не
+        // должны ждать инициализации CoreBluetooth.
+        instance.manager = CBPeripheralManager(delegate: instance, queue: nil)
     }
 
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -127,20 +137,23 @@ class BleAdvertiserPlugin: NSObject, FlutterPlugin, CBPeripheralManagerDelegate 
         }
         pendingPayload = uuids
         pendingResult = result
+        pendingDurationMs = durationMs
 
         if manager?.state == .poweredOn {
-            startWithCurrentPayload(durationMs: durationMs)
+            startWithCurrentPayload()
         }
-        // Иначе ждём peripheralManagerDidUpdateState.
+        // Иначе ждём peripheralManagerDidUpdateState — там стартует
+        // с сохранённым pendingDurationMs.
     }
 
-    private func startWithCurrentPayload(durationMs: Int) {
+    private func startWithCurrentPayload() {
         guard let uuids = pendingPayload, let m = manager, m.state == .poweredOn else { return }
         // ТОЛЬКО ServiceUUIDsKey. Никаких LocalName/других ключей (ТЗ 5.3).
         let data: [String: Any] = [CBAdvertisementDataServiceUUIDsKey: uuids]
         m.startAdvertising(data)
         pendingResult?(nil)
         pendingResult = nil
+        let durationMs = pendingDurationMs
         if durationMs > 0 {
             burstTimer = Timer.scheduledTimer(withTimeInterval: Double(durationMs) / 1000.0, repeats: false) { [weak self] _ in
                 self?.stopAdvertising()
@@ -153,13 +166,14 @@ class BleAdvertiserPlugin: NSObject, FlutterPlugin, CBPeripheralManagerDelegate 
         burstTimer = nil
         manager?.stopAdvertising()
         pendingPayload = nil
+        pendingDurationMs = 0
     }
 
     // MARK: - CBPeripheralManagerDelegate
 
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         if peripheral.state == .poweredOn, pendingPayload != nil {
-            startWithCurrentPayload(durationMs: 0)
+            startWithCurrentPayload()
         } else if peripheral.state != .poweredOn, let r = pendingResult {
             r(FlutterError(code: "BT_UNAVAILABLE", message: "Bluetooth недоступен: \(peripheral.state.rawValue)", details: nil))
             pendingResult = nil
