@@ -52,14 +52,42 @@ flutter build ios --release --no-codesign
 
 Требования: Flutter stable (Dart 3.x), Android SDK (minSdk 29), Xcode 15+ для iOS.
 
-## CI
+## CI и дистрибуция
 
 GitHub Actions на каждый push/PR в `main`:
 
-1. **Analyze & Unit Tests** — `flutter analyze` + `flutter test --coverage`.
-2. **Build Android APK** — релизный `.apk` выгружается как artifact.
-3. **Build iOS** — сборка без подписи (`--no-codesign`), `.zip` с `Runner.app`
-   выгружается как artifact.
+1. **Resolve Build Version** — единый номер сборки на весь запуск
+   (`tools/versioning.py`): push в main → `1.0.0-dev.N` (rolling),
+   тег `v1.0.0` → stable, `v1.0.0-beta.N` / `-rc.N` → prerelease.
+2. **Analyze & Unit Tests** — `flutter analyze` + `flutter test --coverage`.
+3. **Build Android APK** — релизный `.apk` → artifact.
+4. **Build iOS** — сборка без подписи (`--no-codesign`), `.ipa` → artifact.
+5. **Push в main** → rolling-prerelease [`preview`](https://github.com/Noctwave/noctwave-app/releases/tag/preview)
+   (один релиз, файлы перезаписываются) + обновление GBox/AltStore-источника.
+6. **Тег `v*`** → GitHub Release с APK + IPA + фиды версий на `gh-pages`.
+
+### Установка iOS (GBox / AltStore / SideStore)
+
+Добавьте источник (Source) в GBox/AltStore:
+
+```
+https://raw.githubusercontent.com/Noctwave/noctwave-app/gh-pages/apps.json
+```
+
+Источник содержит все каналы: **Noctwave** (stable), **Noctwave (Dev)**
+(preview-сборки main). IPA неподписанный — подпись выполняется при
+установке через GBox/AltStore/SideStore вашим сертификатом.
+
+### Фиды версий (gh-pages)
+
+| Файл | Назначение |
+| :--- | :--- |
+| `apps.json` / `apps-beta.json` | Единый GBox/AltStore-источник (все каналы) |
+| `version.json` | Stable-фид обновлений (версия, build, apk_url, ipa_url) |
+| `beta.json` | Beta/RC-фид обновлений |
+
+Ссылки: `https://noctwave.github.io/noctwave-app/apps.json` (после первого
+деплоя gh-pages) либо raw-адрес выше.
 
 ## Безопасность и приватность
 

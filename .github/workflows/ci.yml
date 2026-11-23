@@ -16,9 +16,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  resolve:
+    name: 🧭 Resolve Build Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      numeric_version: ${{ steps.ver.outputs.numeric_version }}
+      channel: ${{ steps.ver.outputs.channel }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
+      build_id: ${{ steps.ver.outputs.build_id }}
+      commit_sha: ${{ steps.ver.outputs.commit_sha }}
+      build_flags: ${{ steps.ver.outputs.build_flags }}
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧭 Resolve version
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          if [ -n "$TAG" ]; then
+            python tools/versioning.py resolve --tag "$TAG"
+          else
+            # Push в main: rolling dev-сборка, номер = прошлый preview + 1.
+            PREV="$(gh api "repos/${{ github.repository }}/releases/tags/preview" --jq .name 2>/dev/null)" || PREV=""
+            python tools/versioning.py resolve --channel dev --prev-version "${PREV:-}"
+          fi
+
   analyze-and-test:
     name: 🔍 Analyze & Unit Tests
     runs-on: ubuntu-latest
+    needs: resolve
     timeout-minutes: 15
     steps:
       - name: 📚 Checkout
@@ -50,7 +81,7 @@ jobs:
   build-apk:
     name: 🤖 Build Android APK
     runs-on: ubuntu-latest
-    needs: analyze-and-test
+    needs: [resolve, analyze-and-test]
     timeout-minutes: 30
     steps:
       - name: 📚 Checkout
@@ -72,7 +103,7 @@ jobs:
         run: flutter pub get
 
       - name: 🔨 Build release APK
-        run: flutter build apk --release
+        run: flutter build apk --release ${{ needs.resolve.outputs.build_flags }}
 
       - name: 🏷️ Prepare APK artifact
         run: |
@@ -89,7 +120,7 @@ jobs:
   build-ipa:
     name: 🍏 Build iOS Unsigned IPA
     runs-on: macos-latest
-    needs: analyze-and-test
+    needs: [resolve, analyze-and-test]
     timeout-minutes: 45
     steps:
       - name: 📚 Checkout
@@ -113,7 +144,7 @@ jobs:
       # CODE_SIGNING_ALLOWED/REQUIRED=NO — сборка без сертификата (подход
       # референсного krasava-app); Flutter передаёт их в xcodebuild.
       - name: 🔨 Build iOS (release, no codesign)
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign ${{ needs.resolve.outputs.build_flags }}
 
       - name: 📦 Package unsigned IPA (Payload/Runner.app → zip)
         run: |
@@ -132,33 +163,151 @@ jobs:
           path: noctwave-app-unsigned.ipa
           if-no-files-found: error
 
-  release:
-    name: 🚀 Publish GitHub Release (tag v*)
+  # ── Push в main: rolling-prerelease `preview` (один релиз, файлы
+  #    заменяются). По образцу preview-main.yml эталонного krasava-app.
+  publish-preview:
+    name: 🚀 Publish Rolling Preview Release
     runs-on: ubuntu-latest
-    needs: [build-apk, build-ipa]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [resolve, build-apk, build-ipa]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 10
     steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v4
+
       - name: 📥 Download APK artifact
         uses: actions/download-artifact@v4
         with:
           name: noctwave-app-APK
-          path: dist
+          path: download_apk
 
       - name: 📥 Download IPA artifact
         uses: actions/download-artifact@v4
         with:
           name: noctwave-app-IPA
-          path: dist
+          path: download_ipa
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 🚀 Publish rolling preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(find download_apk -name '*.apk' | head -n 1)
+          IPA=$(find download_ipa -name '*.ipa' | head -n 1)
+          python tools/publish_release.py \
+            --channel preview \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --build-number "${{ needs.resolve.outputs.build_id }}" \
+            --commit-sha "${{ needs.resolve.outputs.commit_sha }}" \
+            --repo "${{ github.repository }}" \
+            --apk "$APK" --ipa "$IPA"
+
+  update-preview-feed:
+    name: 📡 Update GBox/AltStore Source (rolling)
+    runs-on: ubuntu-latest
+    needs: [resolve, publish-preview]
+    timeout-minutes: 10
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📝 Generate apps.json (единый источник, все каналы)
+        run: |
+          python tools/update_version_feed.py \
+            --channel preview \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --build-number "${{ needs.resolve.outputs.build_id }}" \
+            --commit-sha "${{ needs.resolve.outputs.commit_sha }}" \
+            --repo "${{ github.repository }}" \
+            --out-dir dist_version
+
+      - name: 🚀 Deploy feeds to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ github.token }}
+          publish_dir: ./dist_version
+          publish_branch: gh-pages
+          keep_files: true
+
+  # ── Тег v*: иммутабельный релиз (stable/beta/rc) + обновление фидов.
+  publish-release:
+    name: 🚀 Publish GitHub Release (tag v*)
+    runs-on: ubuntu-latest
+    needs: [resolve, build-apk, build-ipa]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 10
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📥 Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: noctwave-app-APK
+          path: download_apk
+
+      - name: 📥 Download IPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: noctwave-app-IPA
+          path: download_ipa
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: 🚀 Create GitHub Release with APK + IPA
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" \
+          APK=$(find download_apk -name '*.apk' | head -n 1)
+          IPA=$(find download_ipa -name '*.ipa' | head -n 1)
+          python tools/publish_release.py \
+            --channel "${{ needs.resolve.outputs.channel }}" \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --build-number "${{ needs.resolve.outputs.build_id }}" \
+            --commit-sha "${{ needs.resolve.outputs.commit_sha }}" \
             --repo "${{ github.repository }}" \
-            --title "Noctwave App ${TAG}" \
-            --generate-notes \
-            dist/noctwave-app.apk \
-            dist/noctwave-app-unsigned.ipa
+            --apk "$APK" --ipa "$IPA"
+
+  update-version-feed:
+    name: 📡 Update Version Feeds & Source (tag v*)
+    runs-on: ubuntu-latest
+    needs: [resolve, publish-release]
+    timeout-minutes: 10
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📝 Generate feeds (version.json / beta.json + apps.json)
+        run: |
+          python tools/update_version_feed.py \
+            --channel "${{ needs.resolve.outputs.channel }}" \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --build-number "${{ needs.resolve.outputs.build_id }}" \
+            --commit-sha "${{ needs.resolve.outputs.commit_sha }}" \
+            --repo "${{ github.repository }}" \
+            --out-dir dist_version
+
+      - name: 🚀 Deploy feeds to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ github.token }}
+          publish_dir: ./dist_version
+          publish_branch: gh-pages
+          keep_files: true
