@@ -7,11 +7,15 @@ import '../../core/ble/ble_advertiser.dart';
 import '../../core/ble/logging_gateway.dart';
 import '../../core/ble/tx_log.dart';
 import '../../core/ble/tx_scheduler.dart';
+import '../../core/engine/pattern_engine.dart';
 import '../../core/models/device_profile.dart';
 import '../../core/storage/local_store.dart';
 import '../../core/system/system_controls.dart';
 import '../../core/theme/noctwave_theme.dart';
+import 'autopilot_mode.dart';
+import 'gesture_mode.dart';
 import 'oled_lock_overlay.dart';
+import 'rhythms_mode.dart';
 
 /// Экран управления устройством (ТЗ 3.2.3): переключатель режимов,
 /// рабочая область (MVP — «Пульт»), OLED-замок и нижний док.
@@ -65,7 +69,10 @@ class _ControlPageState extends State<ControlPage> {
   DateTime? _sessionStart;
   Timer? _sessionTicker;
 
-  static const _modes = <String>['Пульт', 'Жест', 'Ритмы', 'Сенсоры'];
+  final PatternRecorder _recorder = PatternRecorder();
+  bool _recording = false;
+
+  static const _modes = <String>['Пульт', 'Жест', 'Ритмы', 'Автопилот'];
 
   DeviceChannel? get _channel {
     final channels = widget.device.channels;
@@ -125,6 +132,7 @@ class _ControlPageState extends State<ControlPage> {
     final channel = _channel;
     if (channel == null) return;
     _startSession();
+    _recorder.record(channel.id, commandHex);
     await _scheduler.sendBurstCommand(
       prefixHex: widget.device.broadcastPrefixHex,
       commandHex: commandHex,
@@ -139,6 +147,123 @@ class _ControlPageState extends State<ControlPage> {
     Future<void>.delayed(const Duration(milliseconds: 350), () {
       if (mounted) setState(() => _txActive = false);
     });
+  }
+
+  /// Динамическая команда из режимов Жест/Автопилот (ТЗ 5.4.2):
+  /// квантование u → ступень, троттлинг и дедупликация — в планировщике.
+  Future<void> _sendDynamic(String channelId, double u) async {
+    final channel = widget.device.channels
+        .where((c) => c.id == channelId)
+        .firstOrNull;
+    if (channel == null) return;
+    _startSession();
+    final cmd = TxScheduler.quantize(
+      u: u,
+      intensityStepsHex: channel.intensityStepsHex,
+      stopCmdHex: channel.stopCmdHex,
+    );
+    _recorder.record(channel.id, cmd);
+    await _scheduler.updateDynamicCommand(
+      prefixHex: widget.device.broadcastPrefixHex,
+      commandHex: cmd,
+      manufacturerId: widget.device.manufacturerId,
+    );
+    if (!mounted) return;
+    setState(() => _lastCommandHex = cmd);
+  }
+
+  /// Команда из плеера ритмов: уже готовый HEX, burst.
+  Future<void> _sendPatternCommand(String channelId, String cmdHex) async {
+    final channel = widget.device.channels
+        .where((c) => c.id == channelId)
+        .firstOrNull;
+    if (channel == null) return;
+    await _sendCommand(cmdHex);
+  }
+
+  /// REC в доке (ТЗ 4.3): запись/остановка записи сессии.
+  void _toggleRecording() {
+    if (_recording) {
+      _finishRecording();
+      return;
+    }
+    _haptic(HapticFeedbackType.medium);
+    _recorder.start();
+    setState(() => _recording = true);
+  }
+
+  Future<void> _finishRecording() async {
+    final pattern = _recorder.finish(
+      id: 'rec-${DateTime.now().millisecondsSinceEpoch}',
+      name: 'Сессия ${DateTime.now().hour.toString().padLeft(2, '0')}:'
+          '${DateTime.now().minute.toString().padLeft(2, '0')}',
+      deviceId: widget.device.id,
+    );
+    setState(() => _recording = false);
+    if (pattern.events.isEmpty) return;
+    final store = widget.store;
+    if (store == null) return;
+    // Имя можно уточнить сразу после записи (ТЗ 4.3).
+    final controller = TextEditingController(text: pattern.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Сохранить ритм'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Отбросить'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final json = pattern.toJson()..['name'] = name;
+    final all = store.loadPatterns()..add(RecordedPattern.fromJson(json));
+    await store.savePatterns(all);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ритм «$name» сохранён (${pattern.events.length} событий)')),
+    );
+  }
+
+  /// Сохранить зацикленный жест в «Ритмы» (ТЗ 4.2).
+  Future<void> _saveGestureToRhythms(List<GestureSample> samples) async {
+    final store = widget.store;
+    if (store == null || samples.isEmpty) return;
+    final channel = _channel;
+    if (channel == null) return;
+    final events = <PatternEvent>[];
+    String? lastCmd;
+    for (final s in samples) {
+      final cmd = TxScheduler.quantize(
+        u: s.u1,
+        intensityStepsHex: channel.intensityStepsHex,
+        stopCmdHex: channel.stopCmdHex,
+      );
+      if (cmd == lastCmd) continue; // дедуп по квантованным ступеням
+      lastCmd = cmd;
+      events.add(PatternEvent(atMs: s.tMs, channelId: channel.id, cmdHex: cmd));
+    }
+    final pattern = RecordedPattern(
+      id: 'gesture-${DateTime.now().millisecondsSinceEpoch}',
+      name: 'Жест ${DateTime.now().hour.toString().padLeft(2, '0')}:'
+          '${DateTime.now().minute.toString().padLeft(2, '0')}',
+      deviceId: widget.device.id,
+      durationMs: samples.last.tMs,
+      events: events,
+    );
+    final all = store.loadPatterns()..add(pattern);
+    await store.savePatterns(all);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Жест сохранён в «Ритмы» (${events.length} событий)')),
+    );
   }
 
   Future<void> _emergencyStop() async {
@@ -229,9 +354,33 @@ class _ControlPageState extends State<ControlPage> {
                 _modeChips(),
                 if (widget.device.channels.length > 1) _channelTabs(),
                 Expanded(
-                  child: _modeIndex == 0
-                      ? _remoteMode()
-                      : _placeholderMode(_modes[_modeIndex]),
+                  child: switch (_modeIndex) {
+                    0 => _remoteMode(),
+                    1 => GestureMode(
+                        device: widget.device,
+                        onCommand: (channelId, u) =>
+                            unawaited(_sendDynamic(channelId, u)),
+                        onSaveToRhythms: (samples) =>
+                            unawaited(_saveGestureToRhythms(samples)),
+                      ),
+                    2 => widget.store == null
+                        ? _placeholderMode('Ритмы')
+                        : RhythmsMode(
+                            device: widget.device,
+                            store: widget.store!,
+                            onCommand: (channelId, cmdHex) =>
+                                unawaited(_sendPatternCommand(channelId, cmdHex)),
+                          ),
+                    3 => AutopilotMode(
+                        onSample: (u) {
+                          final channel = _channel;
+                          if (channel != null) {
+                            unawaited(_sendDynamic(channel.id, u));
+                          }
+                        },
+                      ),
+                    _ => _placeholderMode(_modes[_modeIndex]),
+                  },
                 ),
                 _dock(),
               ],
@@ -424,13 +573,22 @@ class _ControlPageState extends State<ControlPage> {
             const Spacer(),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: NoctwavePalette.surface,
-                side: const BorderSide(color: NoctwavePalette.outline),
+                backgroundColor: _recording
+                    ? NoctwavePalette.stop.withValues(alpha: 0.2)
+                    : NoctwavePalette.surface,
+                side: BorderSide(
+                  color: _recording
+                      ? NoctwavePalette.stop
+                      : NoctwavePalette.outline,
+                ),
               ),
-              icon: const Icon(Icons.fiber_manual_record,
-                  color: NoctwavePalette.stop, size: 16),
-              label: const Text('REC'),
-              onPressed: () {},
+              icon: Icon(
+                _recording ? Icons.stop_circle : Icons.fiber_manual_record,
+                color: NoctwavePalette.stop,
+                size: 16,
+              ),
+              label: Text(_recording ? 'STOP REC' : 'REC'),
+              onPressed: _toggleRecording,
             ),
             const SizedBox(width: 12),
             FilledButton.icon(
