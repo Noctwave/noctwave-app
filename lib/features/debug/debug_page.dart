@@ -5,6 +5,7 @@ import '../../core/ble/love_spouse_codec.dart';
 import '../../core/ble/tx_log.dart';
 import '../../core/storage/local_store.dart';
 import '../../core/theme/noctwave_theme.dart';
+import 'command_hunter.dart';
 
 /// Режим разработчика (ТЗ 4.6): HEX-инжектор, инспектор пакетов
 /// и тюнинг BLE-движка. Команды рассылаются по каналам выбранного
@@ -109,12 +110,14 @@ class _DebugPageState extends State<DebugPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Режим разработчика'),
-          bottom: TabBar(
-            tabs: const <Widget>[
+          bottom: const TabBar(
+            isScrollable: true,
+            tabs: <Widget>[
+              Tab(text: 'Сыщик команд'),
               Tab(text: 'HEX-инжектор'),
               Tab(text: 'Инспектор'),
               Tab(text: 'Тюнинг движка'),
@@ -123,6 +126,11 @@ class _DebugPageState extends State<DebugPage> {
         ),
         body: TabBarView(
           children: <Widget>[
+            CommandHunter(
+              store: widget.store,
+              txLog: widget.txLog,
+              gateway: widget._injectedGateway,
+            ),
             _injectorTab(),
             _inspectorTab(),
             _tuningTab(),
