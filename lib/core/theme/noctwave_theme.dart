@@ -108,7 +108,9 @@ ThemeData buildNoctwaveTheme({
     brightness: colors.brightness,
     primary: accent,
     onPrimary: Colors.white,
-    secondary: NoctwavePalette.accentHigh,
+    // secondary = акцент: SegmentedButton/ChoiceChip выделяют выбранный
+    // вариант именно цветом secondary, а не primary.
+    secondary: accent,
     onSecondary: Colors.white,
     error: NoctwavePalette.stop,
     onError: Colors.white,
@@ -152,6 +154,24 @@ ThemeData buildNoctwaveTheme({
       side: BorderSide(color: colors.outline),
       labelStyle: TextStyle(color: colors.textPrimary),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return accent.withValues(alpha: 0.25);
+          }
+          return colors.surface;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return accent;
+          return colors.textPrimary;
+        }),
+        side: WidgetStateProperty.all(BorderSide(color: colors.outline)),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
