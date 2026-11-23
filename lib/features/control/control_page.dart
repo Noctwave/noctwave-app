@@ -14,6 +14,7 @@ import '../../core/system/system_controls.dart';
 import '../../core/theme/noctwave_theme.dart';
 import 'autopilot_mode.dart';
 import 'gesture_mode.dart';
+import 'kegel_mode.dart';
 import 'oled_lock_overlay.dart';
 import 'rhythms_mode.dart';
 import 'sensors_bridge.dart';
@@ -74,7 +75,9 @@ class _ControlPageState extends State<ControlPage> {
   final PatternRecorder _recorder = PatternRecorder();
   bool _recording = false;
 
-  static const _modes = <String>['Пульт', 'Жест', 'Ритмы', 'Автопилот', 'Сенсоры'];
+  static const _modes = <String>[
+    'Пульт', 'Жест', 'Ритмы', 'Автопилот', 'Сенсоры', 'Кегель',
+  ];
 
   /// Поток акселерометра для режима «Сенсоры» (sensors_plus).
   Stream<(double, double, double)>? _accelerometerEvents;
@@ -411,6 +414,16 @@ class _ControlPageState extends State<ControlPage> {
                             },
                             accelerometerEvents: _accelerometerEvents!,
                           ),
+                    5 => _settings.kegelModule
+                        ? KegelMode(
+                            onIntensity: (u) {
+                              final channel = _channel;
+                              if (channel != null) {
+                                unawaited(_sendDynamic(channel.id, u));
+                              }
+                            },
+                          )
+                        : _placeholderMode('Кегель (модуль выключен в Профиле)'),
                     _ => _placeholderMode(_modes[_modeIndex]),
                   },
                 ),
@@ -445,8 +458,7 @@ class _ControlPageState extends State<ControlPage> {
             _haptic(HapticFeedbackType.light);
             setState(() => _modeIndex = i);
             if (i == 4) unawaited(_ensureSensors());
-          },
-        ),
+          },        ),
       ),
     );
   }
