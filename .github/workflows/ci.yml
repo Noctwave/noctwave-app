@@ -104,6 +104,12 @@ jobs:
       - name: 📦 Pub get
         run: flutter pub get
 
+      # Отключаем Swift Package Manager: в проекте нет SPM-зависимостей,
+      # а автоинтеграция падает с "Unable to get scheme file for Runner".
+      # Нативный BLE-плагин добавлен прямо в target Runner (AppDelegate).
+      - name: ⚙️ Disable Swift Package Manager
+        run: flutter config --no-enable-swift-package-manager
+
       # CODE_SIGNING_ALLOWED/REQUIRED=NO — сборка без сертификата (подход
       # референсного krasava-app); Flutter передаёт их в xcodebuild.
       - name: 🔨 Build iOS (release, no codesign)
