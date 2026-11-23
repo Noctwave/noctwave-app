@@ -70,7 +70,8 @@ void main() {
         debugModeEnabled: true,
         burstDurationMs: 400,
         minTxIntervalMs: 200,
-        stealthMode: true,
+        biometricUnlock: true,
+        themeMode: 'light',
       );
       final restored = AppSettings.fromJson(settings.toJson());
       expect(restored.hapticsEnabled, false);
@@ -78,7 +79,8 @@ void main() {
       expect(restored.debugModeEnabled, true);
       expect(restored.burstDurationMs, 400);
       expect(restored.minTxIntervalMs, 200);
-      expect(restored.stealthMode, true);
+      expect(restored.biometricUnlock, true);
+      expect(restored.themeMode, 'light');
     });
 
     test('copyWith сбрасывает PIN через clearPinHash', () {

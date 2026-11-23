@@ -5,14 +5,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/engine/pcm_decoder.dart';
 import '../../core/theme/noctwave_theme.dart';
 
 /// Локальная музыка (ТЗ 4.4): выбор MP3/M4A/WAV/FLAC, мини-плеер
-/// и маппинг огибающей амплитуды на ступени интенсивности.
+/// и маппинг энергии низких частот (40–150 Гц) на ступени интенсивности.
 ///
-/// FFT низкочастотного диапазона (40–150 Гц) реализован в
-/// [FftAnalyser]; здесь — огибающая по позиции воспроизведения
-/// (синхронизация с плеером без рассинхронизации).
+/// На iOS PCM декодируется нативно (AVAudioFile) и анализируется
+/// [FftAnalyser] по позиции плеера — без дрейфа. На платформах без
+/// нативного декодера — синтетическая огибающая-заглушка.
 class MusicMode extends StatefulWidget {
   const MusicMode({super.key, required this.onSample});
 
@@ -24,6 +25,7 @@ class MusicMode extends StatefulWidget {
 
 class _MusicModeState extends State<MusicMode> {
   final AudioPlayer _player = AudioPlayer();
+  final MusicAnalyser _analyser = MusicAnalyser();
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<PlayerState>? _stateSub;
 
@@ -34,25 +36,13 @@ class _MusicModeState extends State<MusicMode> {
   bool _playing = false;
   double _level = 0;
 
-  /// FFT низкочастотного диапазона (40–150 Гц) реализован в
-  /// [FftAnalyser]; здесь — огибающая по позиции воспроизведения
-  /// (синхронизация с плеером без рассинхронизации).
-
   @override
   void initState() {
     super.initState();
     _positionSub = _player.positionStream.listen((p) {
       _position = p;
       if (_playing) {
-        // Огибающая: медленная синусоида + быстрая пульсация,
-        // привязана к позиции воспроизведения (нет дрейфа).
-        final t = p.inMilliseconds / 1000.0;
-        final envelope = 0.5 +
-            0.3 * math.sin(t * 2 * math.pi * 0.5) +
-            0.2 * math.sin(t * 2 * math.pi * 2.0);
-        _level = envelope.clamp(0.0, 1.0);
-        widget.onSample(_level);
-        if (mounted) setState(() {});
+        unawaited(_analyseAt(p.inMilliseconds));
       }
     });
     _stateSub = _player.playerStateStream.listen((s) {
@@ -65,10 +55,30 @@ class _MusicModeState extends State<MusicMode> {
     });
   }
 
+  /// Реальный FFT низких частот по позиции плеера (iOS, ТЗ 4.4).
+  /// Если PCM-декодер недоступен — синтетическая огибающая-заглушка.
+  Future<void> _analyseAt(int positionMs) async {
+    double level;
+    if (_analyser.isReady) {
+      level = await _analyser.levelAt(positionMs);
+    } else {
+      final t = positionMs / 1000.0;
+      level = (0.5 +
+              0.3 * math.sin(t * 2 * math.pi * 0.5) +
+              0.2 * math.sin(t * 2 * math.pi * 2.0))
+          .clamp(0.0, 1.0);
+    }
+    if (!mounted || !_playing) return;
+    _level = level;
+    widget.onSample(_level);
+    setState(() {});
+  }
+
   @override
   void dispose() {
     unawaited(_positionSub?.cancel());
     unawaited(_stateSub?.cancel());
+    unawaited(_analyser.dispose());
     unawaited(_player.dispose());
     super.dispose();
   }
@@ -83,6 +93,8 @@ class _MusicModeState extends State<MusicMode> {
     final path = file.path;
     if (path == null) return;
     final duration = await _player.setFilePath(path);
+    // Декодируем PCM для реального FFT (iOS). Не блокирует плеер.
+    unawaited(_analyser.load(path));
     if (!mounted) return;
     setState(() {
       _filePath = path;
@@ -170,11 +182,12 @@ class _MusicModeState extends State<MusicMode> {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Уровень маппится на ступени мощности устройства. '
-            'FFT низких частот (40–150 Гц) — FftAnalyser.',
+          Text(
+            _analyser.isReady
+                ? 'Анализ низких частот 40–150 Гц по PCM трека (FFT).'
+                : 'Синтетическая огибающая: нативный PCM-декодер доступен на iOS.',
             style: TextStyle(
-              color: NoctwavePalette.textSecondary,
+              color: NoctwaveColors.of(context).textSecondary,
               fontSize: 12,
             ),
           ),

@@ -96,7 +96,8 @@ class AppSettings {
     this.stopBurstDurationMs = 700,
     this.minTxIntervalMs = 180,
     this.appPinHash,
-    this.stealthMode = false,
+    this.biometricUnlock = false,
+    this.themeMode = 'system',
   });
 
   /// Тактильный отклик (ТЗ 3.1).
@@ -126,11 +127,14 @@ class AppSettings {
   final int stopBurstDurationMs;
   final int minTxIntervalMs;
 
-  /// Хэш PIN-кода блокировки приложения (null = выключена).
+  /// Хэш PIN-кода блокировки приложения (null = PIN не задан).
   final String? appPinHash;
 
-  /// Stealth Mode: смена отображаемого имени (ТЗ 3.2.5).
-  final bool stealthMode;
+  /// Разблокировка по FaceID/TouchID (ТЗ 3.2.5 «Приватность»).
+  final bool biometricUnlock;
+
+  /// Тема: 'system' (под тему ОС), 'dark', 'light'.
+  final String themeMode;
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
         hapticsEnabled: (json['hapticsEnabled'] as bool?) ?? true,
@@ -147,7 +151,8 @@ class AppSettings {
             (json['stopBurstDurationMs'] as num?)?.toInt() ?? 700,
         minTxIntervalMs: (json['minTxIntervalMs'] as num?)?.toInt() ?? 180,
         appPinHash: json['appPinHash'] as String?,
-        stealthMode: (json['stealthMode'] as bool?) ?? false,
+        biometricUnlock: (json['biometricUnlock'] as bool?) ?? false,
+        themeMode: (json['themeMode'] as String?) ?? 'system',
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -163,7 +168,8 @@ class AppSettings {
         'stopBurstDurationMs': stopBurstDurationMs,
         'minTxIntervalMs': minTxIntervalMs,
         if (appPinHash != null) 'appPinHash': appPinHash,
-        'stealthMode': stealthMode,
+        'biometricUnlock': biometricUnlock,
+        'themeMode': themeMode,
       };
 
   AppSettings copyWith({
@@ -180,7 +186,8 @@ class AppSettings {
     int? minTxIntervalMs,
     String? appPinHash,
     bool clearPinHash = false,
-    bool? stealthMode,
+    bool? biometricUnlock,
+    String? themeMode,
   }) =>
       AppSettings(
         hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
@@ -195,6 +202,7 @@ class AppSettings {
         stopBurstDurationMs: stopBurstDurationMs ?? this.stopBurstDurationMs,
         minTxIntervalMs: minTxIntervalMs ?? this.minTxIntervalMs,
         appPinHash: clearPinHash ? null : (appPinHash ?? this.appPinHash),
-        stealthMode: stealthMode ?? this.stealthMode,
+        biometricUnlock: biometricUnlock ?? this.biometricUnlock,
+        themeMode: themeMode ?? this.themeMode,
       );
 }

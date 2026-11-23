@@ -19,6 +19,7 @@ import 'kegel_mode.dart';
 import 'mic_mode.dart';
 import 'music_mode.dart';
 import 'oled_lock_overlay.dart';
+import 'pulsing_active.dart';
 import 'rhythms_mode.dart';
 import 'sensors_bridge.dart';
 import 'sensors_mode.dart';
@@ -386,8 +387,10 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   Future<bool> _onWillPop() async {
-    // При выходе опционально шлём СТОП (ТЗ 3.2.3).
-    await _emergencyStop();
+    // Авто-СТОП при выходе — по настройке Профиля (ТЗ 3.2.3).
+    if (_settings.autoStopOnExit) {
+      await _emergencyStop();
+    }
     return true;
   }
 
@@ -563,26 +566,34 @@ class _ControlPageState extends State<ControlPage> {
             childAspectRatio: 1.1,
             children: <Widget>[
               for (var i = 0; i < steps.length; i++)
-                _ModeTile(
-                  label: 'Режим ${i + 1}',
-                  sublabel: steps[i],
-                  active: _lastCommandHex == steps[i],
-                  intensity: (i + 1) / steps.length,
-                  onTap: () {
-                    _haptic(HapticFeedbackType.light);
-                    unawaited(_sendCommand(steps[i]));
-                  },
+                PulsingActive(
+                  intensity: _lastCommandHex == steps[i] ? (i + 1) / steps.length : 0,
+                  enabled: _settings.pulseAnimation,
+                  child: _ModeTile(
+                    label: 'Режим ${i + 1}',
+                    sublabel: steps[i],
+                    active: _lastCommandHex == steps[i],
+                    intensity: (i + 1) / steps.length,
+                    onTap: () {
+                      _haptic(HapticFeedbackType.light);
+                      unawaited(_sendCommand(steps[i]));
+                    },
+                  ),
                 ),
               for (final preset in channel.presets)
-                _ModeTile(
-                  label: preset.label,
-                  sublabel: preset.cmdHex,
-                  active: _lastCommandHex == preset.cmdHex,
-                  intensity: 0.5,
-                  onTap: () {
-                    _haptic(HapticFeedbackType.light);
-                    unawaited(_sendCommand(preset.cmdHex));
-                  },
+                PulsingActive(
+                  intensity: _lastCommandHex == preset.cmdHex ? 0.5 : 0,
+                  enabled: _settings.pulseAnimation,
+                  child: _ModeTile(
+                    label: preset.label,
+                    sublabel: preset.cmdHex,
+                    active: _lastCommandHex == preset.cmdHex,
+                    intensity: 0.5,
+                    onTap: () {
+                      _haptic(HapticFeedbackType.light);
+                      unawaited(_sendCommand(preset.cmdHex));
+                    },
+                  ),
                 ),
             ],
           ),
@@ -773,17 +784,17 @@ class _ModeTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: active ? accent : NoctwavePalette.textPrimary,
+                    color: active ? accent : NoctwaveColors.of(context).textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   sublabel,
                   maxLines: 1,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: NoctwavePalette.textSecondary,
-                    fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+                    color: NoctwaveColors.of(context).textSecondary,
+                    fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
                   ),
                 ),
               ],

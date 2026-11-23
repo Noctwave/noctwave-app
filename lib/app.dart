@@ -1,11 +1,14 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'core/storage/local_store.dart';
+import 'core/storage/settings_controller.dart';
 import 'core/theme/noctwave_theme.dart';
 import 'features/devices/devices_page.dart';
+import 'features/lock/lock_screen.dart';
 import 'features/profile/profile_page.dart';
 
-/// Корневая навигация: две вкладки (ТЗ 2).
+/// Корневая навигация: две вкладки (ТЗ 2), тема под систему,
+/// блокировка входа при заданном PIN/биометрии.
 class NoctwaveApp extends StatelessWidget {
   const NoctwaveApp({super.key, required this.store});
 
@@ -13,19 +16,66 @@ class NoctwaveApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Noctwave',
-      debugShowCheckedModeBanner: false,
-      theme: buildNoctwaveTheme(),
-      home: RootShell(store: store),
+    final controller = SettingsController(store);
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final s = controller.settings;
+        final accent = Color(s.accentColorValue);
+        final themeMode = switch (s.themeMode) {
+          'dark' => ThemeMode.dark,
+          'light' => ThemeMode.light,
+          _ => ThemeMode.system,
+        };
+        return MaterialApp(
+          title: 'Noctwave',
+          debugShowCheckedModeBanner: false,
+          themeMode: themeMode,
+          theme: buildNoctwaveTheme(colors: NoctwaveColors.light, accent: accent),
+          darkTheme: buildNoctwaveTheme(colors: NoctwaveColors.dark, accent: accent),
+          home: _LockGate(
+            controller: controller,
+            child: RootShell(controller: controller),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Обёртка блокировки: показывает LockScreen, пока вход не подтверждён.
+class _LockGate extends StatefulWidget {
+  const _LockGate({required this.controller, required this.child});
+
+  final SettingsController controller;
+  final Widget child;
+
+  @override
+  State<_LockGate> createState() => _LockGateState();
+}
+
+class _LockGateState extends State<_LockGate> {
+  bool _unlocked = false;
+
+  bool get _needsLock {
+    final s = widget.controller.settings;
+    return s.appPinHash != null || s.biometricUnlock;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_needsLock || _unlocked) return widget.child;
+    return LockScreen(
+      settings: widget.controller.settings,
+      onUnlocked: () => setState(() => _unlocked = true),
     );
   }
 }
 
 class RootShell extends StatefulWidget {
-  const RootShell({super.key, required this.store});
+  const RootShell({super.key, required this.controller});
 
-  final LocalStore store;
+  final SettingsController controller;
 
   @override
   State<RootShell> createState() => _RootShellState();
@@ -35,8 +85,8 @@ class _RootShellState extends State<RootShell> {
   int _index = 0;
 
   late final List<Widget> _pages = <Widget>[
-    DevicesPage(store: widget.store),
-    ProfilePage(store: widget.store),
+    DevicesPage(store: widget.controller.store),
+    ProfilePage(controller: widget.controller),
   ];
 
   @override

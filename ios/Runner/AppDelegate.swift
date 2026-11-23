@@ -19,5 +19,8 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SystemControlsPlugin") {
       SystemControlsPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PcmDecoderPlugin") {
+      PcmDecoderPlugin.register(with: registrar)
+    }
   }
 }
