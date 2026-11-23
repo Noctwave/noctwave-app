@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "comment": "Встроенная оффлайн-база пресетов (ТЗ 6.2). Префикс 6DB643CE97FE427C и команды — эталонные из ТЗ 5.1. Остальные семейства добавляются через Command Hunter или открытые базы love-spouse-controller.",
+  "devices": [
+    {
+      "id": "builtin-vibe-1",
+      "name": "Вибрация (1 мотор)",
+      "broadcastPrefixHex": "6DB643CE97FE427C",
+      "manufacturerId": 65520,
+      "channels": [
+        {
+          "id": "ch_vibe",
+          "name": "Вибрация",
+          "type": "vibrate",
+          "stopCmdHex": "E5157D",
+          "intensityStepsHex": ["E5157D", "F41D7C", "F7864E", "E68E4F"],
+          "presets": [
+            { "id": "p1", "label": "Слабо", "cmdHex": "F41D7C", "icon": "speed_1", "isCustom": false },
+            { "id": "p2", "label": "Средне", "cmdHex": "F7864E", "icon": "speed_2", "isCustom": false },
+            { "id": "p3", "label": "Максимум", "cmdHex": "E68E4F", "icon": "speed_3", "isCustom": false },
+            { "id": "p4", "label": "Режим 1", "cmdHex": "E49C6C", "icon": "spark", "isCustom": false }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "builtin-vibe-2",
+      "name": "Вибрация (2 мотора)",
+      "broadcastPrefixHex": "6DB643CE97FE427C",
+      "manufacturerId": 65520,
+      "channels": [
+        {
+          "id": "ch_motor1",
+          "name": "Мотор 1",
+          "type": "vibrate",
+          "stopCmdHex": "E5157D",
+          "intensityStepsHex": ["E5157D", "F41D7C", "F7864E", "E68E4F"],
+          "presets": []
+        },
+        {
+          "id": "ch_motor2",
+          "name": "Мотор 2",
+          "type": "vibrate",
+          "stopCmdHex": "E5157D",
+          "intensityStepsHex": ["E5157D", "F41D7C", "F7864E", "E68E4F"],
+          "presets": []
+        }
+      ]
+    },
+    {
+      "id": "builtin-manual",
+      "name": "Пустой профиль (Command Hunter)",
+      "broadcastPrefixHex": "6DB643CE97FE427C",
+      "manufacturerId": 65520,
+      "channels": [
+        {
+          "id": "ch_vibe",
+          "name": "Канал 1",
+          "type": "generic",
+          "stopCmdHex": "E5157D",
+          "intensityStepsHex": ["E5157D"],
+          "presets": []
+        }
+      ]
+    }
+  ],
+  "commandBanks": [
+    {
+      "name": "Базовые (эталон ТЗ)",
+      "commands": ["E5157D", "E49C6C", "E68E4F", "F41D7C", "F7864E", "EE0DC7"]
+    },
+    {
+      "name": "Банк E4 (режимы)",
+      "commands": ["E49C6C", "E49D6D", "E49E6E", "E49F6F", "E49060", "E49161", "E49262", "E49363"]
+    },
+    {
+      "name": "Банк E6 (интенсивность)",
+      "commands": ["E68E4F", "E68F4E", "E68C4D", "E68D4C", "E68A4B", "E68B4A", "E68849", "E68948"]
+    },
+    {
+      "name": "Банк F4/F7 (ступени)",
+      "commands": ["F41D7C", "F41E7F", "F41F7E", "F41071", "F7864E", "F7874F", "F7844D", "F7854C"]
+    }
+  ]
+}

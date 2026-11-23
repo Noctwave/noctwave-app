@@ -1,12 +1,15 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'core/storage/local_store.dart';
 import 'core/theme/noctwave_theme.dart';
 import 'features/devices/devices_page.dart';
 import 'features/profile/profile_page.dart';
 
 /// Корневая навигация: две вкладки (ТЗ 2).
 class NoctwaveApp extends StatelessWidget {
-  const NoctwaveApp({super.key});
+  const NoctwaveApp({super.key, required this.store});
+
+  final LocalStore store;
 
   @override
   Widget build(BuildContext context) {
@@ -14,13 +17,15 @@ class NoctwaveApp extends StatelessWidget {
       title: 'Noctwave',
       debugShowCheckedModeBanner: false,
       theme: buildNoctwaveTheme(),
-      home: const RootShell(),
+      home: RootShell(store: store),
     );
   }
 }
 
 class RootShell extends StatefulWidget {
-  const RootShell({super.key});
+  const RootShell({super.key, required this.store});
+
+  final LocalStore store;
 
   @override
   State<RootShell> createState() => _RootShellState();
@@ -29,9 +34,9 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _index = 0;
 
-  static const _pages = <Widget>[
-    DevicesPage(),
-    ProfilePage(),
+  late final List<Widget> _pages = <Widget>[
+    DevicesPage(store: widget.store),
+    ProfilePage(store: widget.store),
   ];
 
   @override

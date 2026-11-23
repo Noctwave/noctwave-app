@@ -1,29 +1,122 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/models/device_profile.dart';
+import '../../core/storage/local_store.dart';
 import '../../core/theme/noctwave_theme.dart';
 import '../control/control_page.dart';
+import 'add_device_page.dart';
 
-/// Вкладка «Устройства» (ТЗ 3.2.1): сетка профилей + Empty State.
+/// Вкладка «Устройства» (ТЗ 3.2.1): сетка сохранённых профилей,
+/// Empty State, добавление через [AddDevicePage], долгое нажатие —
+/// меню карточки (переименовать, дублировать, удалить).
 class DevicesPage extends StatefulWidget {
-  const DevicesPage({super.key});
+  const DevicesPage({super.key, required this.store});
+
+  final LocalStore store;
 
   @override
   State<DevicesPage> createState() => _DevicesPageState();
 }
 
 class _DevicesPageState extends State<DevicesPage> {
-  final List<DeviceProfile> _devices = <DeviceProfile>[];
+  List<DeviceProfile> _devices = <DeviceProfile>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    setState(() => _devices = widget.store.loadDevices());
+  }
+
+  Future<void> _openAddPage() async {
+    await Navigator.of(context).push<DeviceProfile>(
+      MaterialPageRoute<DeviceProfile>(
+        builder: (_) => AddDevicePage(store: widget.store),
+      ),
+    );
+    _reload();
+  }
 
   void _openDevice(DeviceProfile device) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ControlPage(device: device),
+        builder: (_) => ControlPage(device: device, store: widget.store),
       ),
     );
   }
 
-  void _showAddSheet() {
+  Future<void> _rename(DeviceProfile device) async {
+    final controller = TextEditingController(text: device.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Переименовать'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final json = device.toJson()..['name'] = name;
+    final devices = widget.store.loadDevices();
+    final idx = devices.indexWhere((d) => d.id == device.id);
+    if (idx < 0) return;
+    devices[idx] = DeviceProfile.fromJson(json);
+    await widget.store.saveDevices(devices);
+    _reload();
+  }
+
+  Future<void> _duplicate(DeviceProfile device) async {
+    final json = device.toJson()
+      ..['id'] = 'copy-${device.id}-${DateTime.now().millisecondsSinceEpoch}'
+      ..['name'] = '${device.name} (копия)';
+    final devices = widget.store.loadDevices()..add(DeviceProfile.fromJson(json));
+    await widget.store.saveDevices(devices);
+    _reload();
+  }
+
+  Future<void> _delete(DeviceProfile device) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Удалить «${device.name}»?'),
+        content: const Text('Профиль и записанные ритмы устройства '
+            'будут удалены локально.'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: NoctwavePalette.stop),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final devices =
+        widget.store.loadDevices().where((d) => d.id != device.id).toList();
+    await widget.store.saveDevices(devices);
+    _reload();
+  }
+
+  void _showCardMenu(DeviceProfile device) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: NoctwavePalette.surface,
@@ -35,33 +128,29 @@ class _DevicesPageState extends State<DevicesPage> {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: NoctwavePalette.outline,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
             ListTile(
-              leading: const Icon(Icons.qr_code_scanner,
-                  color: NoctwavePalette.accentLow),
-              title: const Text('Добавить по коду / QR'),
-              subtitle: const Text('Однократный запрос к базе моделей'),
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Переименовать'),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _addDemoProfile();
+                unawaited(_rename(device));
               },
             ),
             ListTile(
-              leading: const Icon(Icons.library_books_outlined,
-                  color: NoctwavePalette.accentLow),
-              title: const Text('Выбрать из оффлайн-базы'),
-              subtitle: const Text('Готовые профили семейств устройств'),
+              leading: const Icon(Icons.copy_outlined),
+              title: const Text('Дублировать'),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _addDemoProfile();
+                unawaited(_duplicate(device));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline,
+                  color: NoctwavePalette.stop),
+              title: const Text('Удалить'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                unawaited(_delete(device));
               },
             ),
             const SizedBox(height: 12),
@@ -71,45 +160,6 @@ class _DevicesPageState extends State<DevicesPage> {
     );
   }
 
-  void _addDemoProfile() {
-    // MVP-заготовка: полноценный импорт (API zlmicro + оффлайн-база)
-    // подключается на следующем этапе; пока — эталонный профиль из ТЗ.
-    setState(() {
-      _devices.add(
-        DeviceProfile(
-          id: 'demo-${_devices.length + 1}',
-          name: 'Модель #4923',
-          barcode: '4923',
-          broadcastPrefixHex: '6DB643CE97FE427C',
-          manufacturerId: 65520,
-          channels: const <DeviceChannel>[
-            DeviceChannel(
-              id: 'ch_vibe',
-              name: 'Вибрация',
-              type: ChannelType.vibrate,
-              stopCmdHex: 'E5157D',
-              intensityStepsHex: <String>[
-                'E5157D', 'F41D7C', 'F7864E', 'E68E4F',
-              ],
-              presets: <PresetCommand>[
-                PresetCommand(
-                  id: 'p1', label: 'Слабо', cmdHex: 'F41D7C', icon: 'speed_1',
-                ),
-                PresetCommand(
-                  id: 'p2', label: 'Средне', cmdHex: 'F7864E', icon: 'speed_2',
-                ),
-                PresetCommand(
-                  id: 'p3', label: 'Максимум', cmdHex: 'E68E4F', icon: 'speed_3',
-                ),
-              ],
-            ),
-          ],
-          createdAt: DateTime.now().toUtc(),
-        ),
-      );
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -117,7 +167,7 @@ class _DevicesPageState extends State<DevicesPage> {
         title: const Text('Устройства'),
         actions: <Widget>[
           IconButton(
-            onPressed: _showAddSheet,
+            onPressed: _openAddPage,
             icon: const Icon(Icons.add),
             tooltip: 'Добавить устройство',
           ),
@@ -127,7 +177,7 @@ class _DevicesPageState extends State<DevicesPage> {
       floatingActionButton: _devices.isEmpty
           ? null
           : FloatingActionButton(
-              onPressed: _showAddSheet,
+              onPressed: _openAddPage,
               backgroundColor: NoctwavePalette.accentLow,
               child: const Icon(Icons.add),
             ),
@@ -159,13 +209,13 @@ class _DevicesPageState extends State<DevicesPage> {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: _showAddSheet,
+              onPressed: _openAddPage,
               icon: const Icon(Icons.qr_code_scanner),
               label: const Text('Добавить по коду / QR'),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _showAddSheet,
+              onPressed: _openAddPage,
               icon: const Icon(Icons.library_books_outlined),
               label: const Text('Выбрать из оффлайн-базы'),
             ),
@@ -191,13 +241,24 @@ class _DevicesPageState extends State<DevicesPage> {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: () => _openDevice(device),
+            onLongPress: () => _showCardMenu(device),
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Icon(Icons.toys_outlined,
-                      color: NoctwavePalette.accentLow, size: 28),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      const Icon(Icons.toys_outlined,
+                          color: NoctwavePalette.accentLow, size: 28),
+                      InkWell(
+                        onTap: () => _showCardMenu(device),
+                        child: const Icon(Icons.more_vert,
+                            size: 18, color: NoctwavePalette.textSecondary),
+                      ),
+                    ],
+                  ),
                   const Spacer(),
                   Text(
                     device.name,

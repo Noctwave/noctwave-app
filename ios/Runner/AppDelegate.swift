@@ -16,5 +16,8 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BleAdvertiserPlugin") {
       BleAdvertiserPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SystemControlsPlugin") {
+      SystemControlsPlugin.register(with: registrar)
+    }
   }
 }

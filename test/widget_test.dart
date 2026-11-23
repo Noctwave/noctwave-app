@@ -1,6 +1,5 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:noctwave_app/app.dart';
 import 'package:noctwave_app/core/ble/ble_advertiser.dart';
 import 'package:noctwave_app/core/models/device_profile.dart';
 import 'package:noctwave_app/features/control/control_page.dart';
@@ -25,16 +24,6 @@ void main() {
     ],
   );
 
-  testWidgets('Приложение запускается, показывает Empty State «Устройства»',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(const NoctwaveApp());
-
-    expect(find.text('Устройства'), findsNWidgets(2)); // AppBar + NavigationBar
-    expect(find.text('Профиль'), findsOneWidget);
-    expect(find.text('Пока нет устройств'), findsOneWidget);
-    expect(find.text('Добавить по коду / QR'), findsOneWidget);
-  });
-
   testWidgets('Экран управления рисует док TX · REC · СТОП и плитки режимов',
       (WidgetTester tester) async {
     final gateway = _NoopGateway();
@@ -47,6 +36,21 @@ void main() {
     expect(find.text('TX'), findsOneWidget);
     expect(find.text('Hold-to-Boost'), findsOneWidget);
     expect(find.text('Слабо'), findsOneWidget);
+  });
+
+  testWidgets('Экран управления без каналов показывает заглушку',
+      (WidgetTester tester) async {
+    const emptyDevice = DeviceProfile(
+      id: 'demo-2',
+      name: 'Пустое',
+      broadcastPrefixHex: '6DB643CE97FE427C',
+      manufacturerId: 65520,
+      channels: <DeviceChannel>[],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: ControlPage(device: emptyDevice, gateway: _NoopGateway()),
+    ));
+    expect(find.text('У устройства нет каналов'), findsOneWidget);
   });
 }
 

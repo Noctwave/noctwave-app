@@ -4,8 +4,12 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/ble/ble_advertiser.dart';
+import '../../core/ble/logging_gateway.dart';
+import '../../core/ble/tx_log.dart';
 import '../../core/ble/tx_scheduler.dart';
 import '../../core/models/device_profile.dart';
+import '../../core/storage/local_store.dart';
+import '../../core/system/system_controls.dart';
 import '../../core/theme/noctwave_theme.dart';
 import 'oled_lock_overlay.dart';
 
@@ -15,21 +19,43 @@ class ControlPage extends StatefulWidget {
   const ControlPage({
     super.key,
     required this.device,
+    this.store,
     BleAdvertiserGateway? gateway,
-  }) : _injectedGateway = gateway;
+    TxLog? txLog,
+  })  : _injectedGateway = gateway,
+        _injectedTxLog = txLog;
 
   final DeviceProfile device;
+  final LocalStore? store;
   final BleAdvertiserGateway? _injectedGateway;
+  final TxLog? _injectedTxLog;
 
   @override
   State<ControlPage> createState() => _ControlPageState();
 }
 
 class _ControlPageState extends State<ControlPage> {
-  late final BleAdvertiserGateway _gateway =
+  late final BleAdvertiserGateway _rawGateway =
       widget._injectedGateway ?? MethodChannelBleAdvertiser();
 
-  late final TxScheduler _scheduler = TxScheduler(gateway: _gateway);
+  late final TxLog _txLog = widget._injectedTxLog ?? TxLog();
+
+  late final BleAdvertiserGateway _gateway =
+      LoggingBleGateway(_rawGateway, _txLog);
+
+  late final AppSettings _settings =
+      widget.store?.loadSettings() ?? const AppSettings();
+
+  late final TxScheduler _scheduler = TxScheduler(
+    gateway: _gateway,
+    config: TxSchedulerConfig(
+      burstDurationMs: _settings.burstDurationMs,
+      stopBurstDurationMs: _settings.stopBurstDurationMs,
+      minTxIntervalMs: _settings.minTxIntervalMs,
+    ),
+  );
+
+  final SystemControls _systemControls = SystemControls();
 
   int _modeIndex = 0;
   int _channelIndex = 0;
@@ -48,13 +74,27 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // «Громкость вниз» = экстренный СТОП (ТЗ 3.2.5), если включено.
+    _systemControls.onVolumeDown = () {
+      if (_settings.volumeDownStop) {
+        unawaited(_emergencyStop());
+      }
+    };
+  }
+
+  @override
   void dispose() {
     _sessionTicker?.cancel();
+    _systemControls.dispose();
+    unawaited(_systemControls.setKeepScreenOn(false));
     unawaited(_scheduler.dispose());
     super.dispose();
   }
 
   void _haptic(HapticFeedbackType type) {
+    if (!_settings.hapticsEnabled) return;
     switch (type) {
       case HapticFeedbackType.light:
         unawaited(HapticFeedback.lightImpact());
@@ -145,6 +185,8 @@ class _ControlPageState extends State<ControlPage> {
 
   void _toggleOledLock() {
     setState(() => _oledLock = !_oledLock);
+    // Wakelock: экран не гаснет, пока активен OLED-замок (ТЗ 3.2.4).
+    unawaited(_systemControls.setKeepScreenOn(_oledLock));
   }
 
   @override
