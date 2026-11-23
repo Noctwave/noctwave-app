@@ -15,10 +15,13 @@ import '../../core/theme/noctwave_theme.dart';
 import 'autopilot_mode.dart';
 import 'gesture_mode.dart';
 import 'kegel_mode.dart';
+import 'mic_mode.dart';
+import 'music_mode.dart';
 import 'oled_lock_overlay.dart';
 import 'rhythms_mode.dart';
 import 'sensors_bridge.dart';
 import 'sensors_mode.dart';
+import 'video_mode.dart';
 
 /// Экран управления устройством (ТЗ 3.2.3): переключатель режимов,
 /// рабочая область (MVP — «Пульт»), OLED-замок и нижний док.
@@ -75,9 +78,18 @@ class _ControlPageState extends State<ControlPage> {
   final PatternRecorder _recorder = PatternRecorder();
   bool _recording = false;
 
-  static const _modes = <String>[
-    'Пульт', 'Жест', 'Ритмы', 'Автопилот', 'Сенсоры', 'Кегель',
-  ];
+  /// Список режимов: базовые + опциональные по настройкам Профиля (ТЗ 2).
+  List<String> get _modes => <String>[
+        'Пульт',
+        'Жест',
+        'Ритмы',
+        'Автопилот',
+        'Сенсоры',
+        'Микрофон',
+        'Музыка',
+        if (_settings.kegelModule) 'Кегель',
+        if (_settings.videoModule) 'Видео',
+      ];
 
   /// Поток акселерометра для режима «Сенсоры» (sensors_plus).
   Stream<(double, double, double)>? _accelerometerEvents;
@@ -378,54 +390,7 @@ class _ControlPageState extends State<ControlPage> {
                 _modeChips(),
                 if (widget.device.channels.length > 1) _channelTabs(),
                 Expanded(
-                  child: switch (_modeIndex) {
-                    0 => _remoteMode(),
-                    1 => GestureMode(
-                        device: widget.device,
-                        onCommand: (channelId, u) =>
-                            unawaited(_sendDynamic(channelId, u)),
-                        onSaveToRhythms: (samples) =>
-                            unawaited(_saveGestureToRhythms(samples)),
-                      ),
-                    2 => widget.store == null
-                        ? _placeholderMode('Ритмы')
-                        : RhythmsMode(
-                            device: widget.device,
-                            store: widget.store!,
-                            onCommand: (channelId, cmdHex) =>
-                                unawaited(_sendPatternCommand(channelId, cmdHex)),
-                          ),
-                    3 => AutopilotMode(
-                        onSample: (u) {
-                          final channel = _channel;
-                          if (channel != null) {
-                            unawaited(_sendDynamic(channel.id, u));
-                          }
-                        },
-                      ),
-                    4 => _accelerometerEvents == null
-                        ? _placeholderMode('Сенсоры (акселерометр недоступен)')
-                        : SensorsMode(
-                            onSample: (u) {
-                              final channel = _channel;
-                              if (channel != null) {
-                                unawaited(_sendDynamic(channel.id, u));
-                              }
-                            },
-                            accelerometerEvents: _accelerometerEvents!,
-                          ),
-                    5 => _settings.kegelModule
-                        ? KegelMode(
-                            onIntensity: (u) {
-                              final channel = _channel;
-                              if (channel != null) {
-                                unawaited(_sendDynamic(channel.id, u));
-                              }
-                            },
-                          )
-                        : _placeholderMode('Кегель (модуль выключен в Профиле)'),
-                    _ => _placeholderMode(_modes[_modeIndex]),
-                  },
+                  child: _buildModeBody(),
                 ),
                 _dock(),
               ],
@@ -443,6 +408,56 @@ class _ControlPageState extends State<ControlPage> {
     );
   }
 
+  /// Рабочая область выбранного режима (ТЗ 3.2.3).
+  Widget _buildModeBody() {
+    final modeName = _modeIndex < _modes.length ? _modes[_modeIndex] : '';
+    void sendU(double u) {
+      final channel = _channel;
+      if (channel != null) {
+        unawaited(_sendDynamic(channel.id, u));
+      }
+    }
+
+    switch (modeName) {
+      case 'Пульт':
+        return _remoteMode();
+      case 'Жест':
+        return GestureMode(
+          device: widget.device,
+          onCommand: (channelId, u) => unawaited(_sendDynamic(channelId, u)),
+          onSaveToRhythms: (samples) => unawaited(_saveGestureToRhythms(samples)),
+        );
+      case 'Ритмы':
+        return widget.store == null
+            ? _placeholderMode('Ритмы')
+            : RhythmsMode(
+                device: widget.device,
+                store: widget.store!,
+                onCommand: (channelId, cmdHex) =>
+                    unawaited(_sendPatternCommand(channelId, cmdHex)),
+              );
+      case 'Автопилот':
+        return AutopilotMode(onSample: sendU);
+      case 'Сенсоры':
+        return _accelerometerEvents == null
+            ? _placeholderMode('Сенсоры (акселерометр недоступен)')
+            : SensorsMode(
+                onSample: sendU,
+                accelerometerEvents: _accelerometerEvents!,
+              );
+      case 'Микрофон':
+        return MicMode(onSample: sendU);
+      case 'Музыка':
+        return MusicMode(onSample: sendU);
+      case 'Кегель':
+        return KegelMode(onIntensity: sendU);
+      case 'Видео':
+        return VideoMode(onSample: sendU);
+      default:
+        return _placeholderMode(modeName);
+    }
+  }
+
   Widget _modeChips() {
     return SizedBox(
       height: 52,
@@ -457,8 +472,9 @@ class _ControlPageState extends State<ControlPage> {
           onSelected: (_) {
             _haptic(HapticFeedbackType.light);
             setState(() => _modeIndex = i);
-            if (i == 4) unawaited(_ensureSensors());
-          },        ),
+            if (_modes[i] == 'Сенсоры') unawaited(_ensureSensors());
+          },
+        ),
       ),
     );
   }
