@@ -3,15 +3,16 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/theme/noctwave_theme.dart';
-
-/// Оверлей «OLED-замок» (ТЗ 3.2.4): истинный чёрный #000000, сверхтусклые
-/// часы, индикатор активного режима, блокировка случайных касаний,
-/// разблокировка долгим тапом 1.5 сек или свайпом вправо.
+/// Оверлей «OLED-замок» (ТЗ 3.2.4).
 ///
-/// Удерживает экран активным: Flutter-уровень — через
-/// `SystemChrome.setEnabledSystemUIMode`; нативный Wakelock /
-/// isIdleTimerDisabled подключается плагином на Этапе 1.
+/// Зачем он нужен: на iOS сворачивание приложения или блокировка экрана
+/// прерывает BLE-передачу (система переносит ServiceUUIDs в overflow area).
+/// Замок держит экран активным (wakelock), гасит всё лишнее до истинного
+/// чёрного и блокирует случайные касания — устройство продолжает работать,
+/// а телефон не светит в темноте.
+///
+/// Дизайн: минимализм. Только тусклые часы и едва заметная точка TX.
+/// Разблокировка — удержание в любом месте 1.5 с или свайп вправо.
 class OledLockOverlay extends StatefulWidget {
   const OledLockOverlay({
     super.key,
@@ -30,19 +31,26 @@ class OledLockOverlay extends StatefulWidget {
   State<OledLockOverlay> createState() => _OledLockOverlayState();
 }
 
-class _OledLockOverlayState extends State<OledLockOverlay> {
+class _OledLockOverlayState extends State<OledLockOverlay>
+    with SingleTickerProviderStateMixin {
   Timer? _clock;
   DateTime _now = DateTime.now();
-  double _holdProgress = 0;
-  Timer? _holdTimer;
+  late final AnimationController _holdController;
 
   @override
   void initState() {
     super.initState();
+    _holdController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          widget.onUnlock();
+        }
+      });
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
-    // Отключаем системный UI — полный иммерсивный режим.
     unawaited(
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
     );
@@ -51,26 +59,9 @@ class _OledLockOverlayState extends State<OledLockOverlay> {
   @override
   void dispose() {
     _clock?.cancel();
-    _holdTimer?.cancel();
+    _holdController.dispose();
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     super.dispose();
-  }
-
-  void _startHold() {
-    _holdTimer?.cancel();
-    _holdTimer = Timer.periodic(const Duration(milliseconds: 50), (t) {
-      setState(() => _holdProgress += 50 / 1500);
-      if (_holdProgress >= 1) {
-        t.cancel();
-        widget.onUnlock();
-      }
-    });
-  }
-
-  void _cancelHold() {
-    _holdTimer?.cancel();
-    _holdTimer = null;
-    setState(() => _holdProgress = 0);
   }
 
   String _clockText() {
@@ -81,103 +72,94 @@ class _OledLockOverlayState extends State<OledLockOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    // AbsorbPointer блокирует случайные касания всего, кроме зоны
-    // разблокировки. Фон — строго #000000 (OLED, ТЗ 8.4).
+    // Весь экран — зона удержания для разблокировки.
     return GestureDetector(
-      // Свайп вправо — альтернативная разблокировка.
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: (_) => _holdController.forward(from: 0),
+      onLongPressEnd: (_) => _holdController.reverse(),
+      onLongPressCancel: () => _holdController.reverse(),
       onHorizontalDragEnd: (details) {
         if ((details.primaryVelocity ?? 0) > 300) widget.onUnlock();
       },
-      child: Container(
-        color: NoctwavePalette.oledBlack,
-        child: SafeArea(
-          child: Column(
-            children: <Widget>[
-              const Spacer(flex: 3),
-              // Сверхтусклые часы.
-              Text(
-                _clockText(),
-                style: TextStyle(
-                  fontSize: 56,
-                  fontWeight: FontWeight.w200,
-                  color: Colors.white.withValues(alpha: 0.12),
-                  fontFeatures: const <FontFeature>[
-                    FontFeature.tabularFigures(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+      child: ColoredBox(
+        color: const Color(0xFF000000),
+        child: Stack(
+          children: <Widget>[
+            // Тусклые часы по центру.
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Container(
-                    width: 8,
-                    height: 8,
+                  Text(
+                    _clockText(),
+                    style: TextStyle(
+                      fontSize: 64,
+                      fontWeight: FontWeight.w100,
+                      color: Colors.white.withValues(alpha: 0.10),
+                      fontFeatures: const <FontFeature>[
+                        FontFeature.tabularFigures(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Точка TX: едва заметна, загорается при отправке.
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 6,
+                    height: 6,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: widget.txActive
-                          ? NoctwavePalette.accentHigh.withValues(alpha: 0.35)
-                          : Colors.white.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    widget.modeLabel,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      letterSpacing: 2,
+                          ? const Color(0xFFF43F5E).withValues(alpha: 0.35)
+                          : Colors.white.withValues(alpha: 0.06),
                     ),
                   ),
                 ],
               ),
-              const Spacer(flex: 2),
-              // Экстренный СТОП по кнопке «Громкость вниз» обрабатывается
-              // нативным слоем (KeyEvent / rawKeyboardListener); здесь —
-              // страховочная зона долгого тапа.
-              GestureDetector(
-                onLongPressStart: (_) => _startHold(),
-                onLongPressEnd: (_) => _cancelHold(),
-                onLongPressCancel: _cancelHold,
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 40),
-                  height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.08),
+            ),
+            // Прогресс удержания — тонкое кольцо вокруг часов, без текста.
+            Center(
+              child: AnimatedBuilder(
+                animation: _holdController,
+                builder: (context, _) {
+                  if (_holdController.value == 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return SizedBox(
+                    width: 160,
+                    height: 160,
+                    child: CircularProgressIndicator(
+                      value: _holdController.value,
+                      strokeWidth: 1.5,
+                      color: Colors.white.withValues(alpha: 0.18),
+                      backgroundColor: Colors.transparent,
                     ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Stack(
-                      children: <Widget>[
-                        Positioned.fill(
-                          child: FractionallySizedBox(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: _holdProgress.clamp(0.0, 1.0),
-                            child: ColoredBox(
-                              color: NoctwavePalette.accentLow
-                                  .withValues(alpha: 0.25),
-                            ),
-                          ),
-                        ),
-                        Center(
-                          child: Text(
-                            'Удерживайте 1.5 с для разблокировки',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
+                  );
+                },
+              ),
+            ),
+            // Подсказка внизу — видна только во время удержания.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 48,
+              child: AnimatedBuilder(
+                animation: _holdController,
+                builder: (context, _) => Opacity(
+                  opacity: _holdController.value > 0 ? 1 : 0,
+                  child: Text(
+                    'удерживайте для разблокировки',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.25),
+                      letterSpacing: 1,
                     ),
                   ),
                 ),
               ),
-              const Spacer(flex: 1),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

@@ -178,7 +178,7 @@ class _DevicesPageState extends State<DevicesPage> {
           ? null
           : FloatingActionButton(
               onPressed: _openAddPage,
-              backgroundColor: NoctwavePalette.accentLow,
+              backgroundColor: Theme.of(context).colorScheme.primary,
               child: const Icon(Icons.add),
             ),
     );
@@ -191,10 +191,10 @@ class _DevicesPageState extends State<DevicesPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Icon(
+            Icon(
               Icons.bluetooth_searching,
               size: 64,
-              color: NoctwavePalette.textSecondary,
+              color: NoctwaveColors.of(context).textSecondary,
             ),
             const SizedBox(height: 16),
             Text(
@@ -202,10 +202,10 @@ class _DevicesPageState extends State<DevicesPage> {
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Добавьте устройство по коду с коробки\nили выберите готовый профиль.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: NoctwavePalette.textSecondary),
+              style: TextStyle(color: NoctwaveColors.of(context).textSecondary),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
@@ -250,12 +250,21 @@ class _DevicesPageState extends State<DevicesPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
-                      const Icon(Icons.toys_outlined,
-                          color: NoctwavePalette.accentLow, size: 28),
-                      InkWell(
+                      Icon(Icons.toys_outlined,
+                          color: Theme.of(context).colorScheme.primary, size: 28),
+                      // Большая зона тапа (44×44), без ripple-анимации.
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onTap: () => _showCardMenu(device),
-                        child: const Icon(Icons.more_vert,
-                            size: 18, color: NoctwavePalette.textSecondary),
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Center(
+                            child: Icon(Icons.more_vert,
+                                size: 22,
+                                color: NoctwaveColors.of(context).textSecondary),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -277,15 +286,17 @@ class _DevicesPageState extends State<DevicesPage> {
                               horizontal: 8, vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: NoctwavePalette.accentLow
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
                                   .withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               ch.name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: NoctwavePalette.textSecondary,
+                                color: NoctwaveColors.of(context).textSecondary,
                               ),
                             ),
                           ),

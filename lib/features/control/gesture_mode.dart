@@ -38,7 +38,11 @@ class GestureSample {
 }
 
 class _GestureModeState extends State<GestureMode> {
+  /// Скользящее окно для отрисовки (~8 с).
   final List<GestureSample> _track = <GestureSample>[];
+
+  /// Полный трек для Loop и сохранения в Ритмы.
+  final List<GestureSample> _fullTrack = <GestureSample>[];
   final GlobalKey<_GestureCanvasState> _canvasKey = GlobalKey<_GestureCanvasState>();
 
   bool _looping = false;
@@ -59,7 +63,15 @@ class _GestureModeState extends State<GestureMode> {
     final channels = widget.device.channels;
     final tMs = _track.isEmpty ? 0 : _track.last.tMs + 16;
     _track.add(GestureSample(tMs, u1, u2));
-    if (_track.length > 3000) _track.removeAt(0); // ~50 с записи
+    // Скользящее окно ~8 секунд: график всегда показывает недавнее
+    // движение, а не сжимает всю историю в нечитаемую линию.
+    // Для Loop и сохранения держим полный трек отдельно.
+    _fullTrack.add(GestureSample(tMs, u1, u2));
+    if (_fullTrack.length > 6000) _fullTrack.removeAt(0);
+    const windowMs = 8000;
+    while (_track.isNotEmpty && tMs - _track.first.tMs > windowMs) {
+      _track.removeAt(0);
+    }
     if (channels.isEmpty) return;
     if (_is2D) {
       widget.onCommand(channels[0].id, u1.clamp(0.0, 1.0));
@@ -71,7 +83,7 @@ class _GestureModeState extends State<GestureMode> {
   }
 
   void _toggleLoop() {
-    if (_track.length < 2) return;
+    if (_fullTrack.length < 2) return;
     setState(() => _looping = !_looping);
     if (_looping) {
       _startLoop();
@@ -87,16 +99,16 @@ class _GestureModeState extends State<GestureMode> {
     _loopClock..reset()..start();
     const tickMs = 25;
     _loopTimer = Timer.periodic(const Duration(milliseconds: tickMs), (_) {
-      if (_track.isEmpty) return;
+      if (_fullTrack.isEmpty) return;
       final virtualMs = _loopClock.elapsedMilliseconds * _speed;
-      final total = _track.last.tMs == 0 ? 1 : _track.last.tMs;
+      final total = _fullTrack.last.tMs == 0 ? 1 : _fullTrack.last.tMs;
       final pos = virtualMs % total;
-      // Ближайшая точка трека.
-      var idx = (pos / total * (_track.length - 1)).round();
-      idx = idx.clamp(0, _track.length - 1);
+      // Ближайшая точка полного трека.
+      var idx = (pos / total * (_fullTrack.length - 1)).round();
+      idx = idx.clamp(0, _fullTrack.length - 1);
       if (idx != _loopPos || virtualMs % total < tickMs * _speed) {
         _loopPos = idx;
-        final s = _track[idx];
+        final s = _fullTrack[idx];
         final channels = widget.device.channels;
         if (channels.isNotEmpty) {
           widget.onCommand(channels[0].id, s.u1);
@@ -110,7 +122,7 @@ class _GestureModeState extends State<GestureMode> {
   }
 
   void _saveToRhythms() {
-    widget.onSaveToRhythms?.call(List<GestureSample>.of(_track));
+    widget.onSaveToRhythms?.call(List<GestureSample>.of(_fullTrack));
   }
 
   @override
@@ -125,7 +137,7 @@ class _GestureModeState extends State<GestureMode> {
               is2D: _is2D,
               track: _track,
               onSample: _onSample,
-              loopProgress: _looping && _track.length > 1 ? _loopPos / (_track.length - 1) : null,
+              loopProgress: _looping && _fullTrack.length > 1 ? _loopPos / (_fullTrack.length - 1) : null,
             ),
           ),
         ),
@@ -141,7 +153,7 @@ class _GestureModeState extends State<GestureMode> {
                   ),
                   icon: Icon(_looping ? Icons.stop_circle_outlined : Icons.loop),
                   label: Text(_looping ? 'Стоп Loop' : 'Loop'),
-                  onPressed: _track.length < 2 ? null : _toggleLoop,
+                  onPressed: _fullTrack.length < 2 ? null : _toggleLoop,
                 ),
               ),
               const SizedBox(width: 8),
@@ -163,7 +175,7 @@ class _GestureModeState extends State<GestureMode> {
               IconButton.outlined(
                 tooltip: 'Сохранить жест в «Ритмы»',
                 icon: const Icon(Icons.bookmark_add_outlined),
-                onPressed: _track.length < 2 ? null : _saveToRhythms,
+                onPressed: _fullTrack.length < 2 ? null : _saveToRhythms,
               ),
             ],
           ),

@@ -270,11 +270,6 @@ class _ProfilePageState extends State<ProfilePage> {
               onChanged: (v) => unawaited(_update(_settings.copyWith(kegelModule: v))),
             ),
             SwitchListTile(
-              title: const Text('Локальное видео'),
-              value: _settings.videoModule,
-              onChanged: (v) => unawaited(_update(_settings.copyWith(videoModule: v))),
-            ),
-            SwitchListTile(
               title: const Text('Авто-СТОП при выходе'),
               subtitle: const Text('Останавливать устройство при возврате '
                   'к списку устройств'),

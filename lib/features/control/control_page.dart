@@ -16,14 +16,13 @@ import '../../core/theme/noctwave_theme.dart';
 import 'autopilot_mode.dart';
 import 'gesture_mode.dart';
 import 'kegel_mode.dart';
+import 'media_mode.dart';
 import 'mic_mode.dart';
-import 'music_mode.dart';
 import 'oled_lock_overlay.dart';
 import 'pulsing_active.dart';
 import 'rhythms_mode.dart';
 import 'sensors_bridge.dart';
 import 'sensors_mode.dart';
-import 'video_mode.dart';
 
 /// Экран управления устройством (ТЗ 3.2.3): переключатель режимов,
 /// рабочая область (MVP — «Пульт»), OLED-замок и нижний док.
@@ -81,6 +80,8 @@ class _ControlPageState extends State<ControlPage> {
   bool _recording = false;
 
   /// Список режимов: базовые + опциональные по настройкам Профиля (ТЗ 2).
+  /// Музыка и видео объединены в один режим «Медиа» — суть одна:
+  /// локальный файл управляет устройством через анализ звука.
   List<String> get _modes => <String>[
         'Пульт',
         'Жест',
@@ -88,9 +89,8 @@ class _ControlPageState extends State<ControlPage> {
         'Автопилот',
         'Сенсоры',
         'Микрофон',
-        'Музыка',
+        'Медиа',
         if (_settings.kegelModule) 'Кегель',
-        if (_settings.videoModule) 'Видео',
       ];
 
   /// Поток акселерометра для режима «Сенсоры» (sensors_plus).
@@ -102,11 +102,11 @@ class _ControlPageState extends State<ControlPage> {
     onForeground: _onAppForeground,
   );
 
-  /// Был ли показан баннер о сворачивании на iOS в этой сессии.
-  bool _backgroundWarned = false;
-
   /// Шла ли передача в момент сворачивания.
   bool _wasTransmitting = false;
+
+  /// Тихий индикатор в шапке: передача прервана сворачиванием.
+  bool _showBackgroundHint = false;
 
   @override
   void initState() {
@@ -122,35 +122,20 @@ class _ControlPageState extends State<ControlPage> {
 
   /// iOS: сворачивание или блокировка экрана переносит ServiceUUIDs в
   /// overflow area — пакет становится нечитаемым (ТЗ 5.3). Немедленно
-  /// останавливаем устройство, если передача шла, и предупреждаем один раз.
+  /// останавливаем устройство, если передача шла. Вместо назойливого
+  /// snackbar — тихий индикатор в шапке, который гаснет тапом.
   void _onAppBackground() {
     _wasTransmitting = _lastCommandHex != null && _lastCommandHex != _channel?.stopCmdHex;
     if (_wasTransmitting) {
       unawaited(_emergencyStop());
     }
-    if (!_backgroundWarned && !_oledLock) {
-      _backgroundWarned = true;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 5),
-            content: const Text(
-              'На iOS сворачивание приложения прерывает передачу команд. '
-              'Используйте OLED-замок (🌙), чтобы держать экран активным.',
-            ),
-            action: SnackBarAction(
-              label: 'OLED-замок',
-              onPressed: _toggleOledLock,
-            ),
-          ),
-        );
-      }
+    if (!_oledLock && mounted) {
+      setState(() => _showBackgroundHint = true);
     }
   }
 
   void _onAppForeground() {
-    // Баннер показываем заново при следующем сворачивании.
-    _backgroundWarned = false;
+    // Индикатор остаётся, пока пользователь его не скроет тапом.
   }
 
   /// Ленивая инициализация акселерометра: сенсор открывается только при
@@ -424,19 +409,20 @@ class _ControlPageState extends State<ControlPage> {
               title: Text(widget.device.name),
               actions: <Widget>[
                 IconButton(
-                  tooltip: 'OLED-замок',
+                  tooltip: 'OLED-замок — держит экран активным',
                   icon: const Icon(Icons.dark_mode_outlined),
                   onPressed: _toggleOledLock,
                 ),
                 IconButton(
-                  tooltip: 'Настройки профиля',
+                  tooltip: 'Устройство',
                   icon: const Icon(Icons.settings_outlined),
-                  onPressed: () {},
+                  onPressed: _showDeviceMenu,
                 ),
               ],
             ),
             body: Column(
               children: <Widget>[
+                if (_showBackgroundHint) _backgroundHintBar(),
                 _modeChips(),
                 if (widget.device.channels.length > 1) _channelTabs(),
                 Expanded(
@@ -456,6 +442,157 @@ class _ControlPageState extends State<ControlPage> {
         ],
       ),
     );
+  }
+
+  /// Тихий индикатор в шапке вместо snackbar: гаснет тапом по крестику.
+  Widget _backgroundHintBar() {
+    final colors = NoctwaveColors.of(context);
+    return Container(
+      width: double.infinity,
+      color: colors.surface,
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.info_outline, size: 16, color: colors.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Передача прервана: приложение сворачивалось. '
+              'OLED-замок (🌙) держит экран активным.',
+              style: TextStyle(fontSize: 12, color: colors.textSecondary),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, size: 16, color: colors.textSecondary),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => setState(() => _showBackgroundHint = false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Меню устройства из шапки управления: переименовать, дублировать,
+  /// удалить.
+  void _showDeviceMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: NoctwaveColors.of(context).surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Переименовать'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                unawaited(_renameDevice());
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_outlined),
+              title: const Text('Дублировать'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                unawaited(_duplicateDevice());
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: NoctwavePalette.stop),
+              title: const Text('Удалить устройство'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                unawaited(_deleteDevice());
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _renameDevice() async {
+    final store = widget.store;
+    if (store == null) return;
+    final controller = TextEditingController(text: widget.device.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Переименовать'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final devices = store.loadDevices();
+    final idx = devices.indexWhere((d) => d.id == widget.device.id);
+    if (idx < 0) return;
+    final json = devices[idx].toJson()..['name'] = name;
+    devices[idx] = DeviceProfile.fromJson(json);
+    await store.saveDevices(devices);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Переименовано в «$name»')),
+    );
+  }
+
+  Future<void> _duplicateDevice() async {
+    final store = widget.store;
+    if (store == null) return;
+    final json = widget.device.toJson()
+      ..['id'] = 'copy-${widget.device.id}-${DateTime.now().millisecondsSinceEpoch}'
+      ..['name'] = '${widget.device.name} (копия)';
+    final devices = store.loadDevices()..add(DeviceProfile.fromJson(json));
+    await store.saveDevices(devices);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Копия создана')),
+    );
+  }
+
+  Future<void> _deleteDevice() async {
+    final store = widget.store;
+    if (store == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Удалить «${widget.device.name}»?'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: NoctwavePalette.stop),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final devices =
+        store.loadDevices().where((d) => d.id != widget.device.id).toList();
+    await store.saveDevices(devices);
+    if (!mounted) return;
+    await _emergencyStop();
+    if (mounted) Navigator.of(context).pop();
   }
 
   /// Рабочая область выбранного режима (ТЗ 3.2.3).
@@ -497,12 +634,10 @@ class _ControlPageState extends State<ControlPage> {
               );
       case 'Микрофон':
         return MicMode(onSample: sendU);
-      case 'Музыка':
-        return MusicMode(onSample: sendU);
+      case 'Медиа':
+        return MediaMode(onSample: sendU);
       case 'Кегель':
         return KegelMode(onIntensity: sendU);
-      case 'Видео':
-        return VideoMode(onSample: sendU);
       default:
         return _placeholderMode(modeName);
     }
@@ -613,9 +748,21 @@ class _ControlPageState extends State<ControlPage> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 icon: const Icon(Icons.bolt),
-                label: const Text('Hold-to-Boost'),
+                label: const Text('Удерживай — максимум'),
                 onPressed: () {},
               ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Зажми кнопку — устройство выдаст максимум. '
+            'Отпустишь — вернётся прежний режим.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: NoctwaveColors.of(context).textSecondary,
             ),
           ),
         ),
@@ -628,11 +775,11 @@ class _ControlPageState extends State<ControlPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          const Icon(Icons.construction_outlined,
-              size: 48, color: NoctwavePalette.textSecondary),
+          Icon(Icons.construction_outlined,
+              size: 48, color: NoctwaveColors.of(context).textSecondary),
           const SizedBox(height: 12),
-          Text('Режим «$mode» — Этап 2',
-              style: const TextStyle(color: NoctwavePalette.textSecondary)),
+          Text('Режим «$mode» недоступен',
+              style: TextStyle(color: NoctwaveColors.of(context).textSecondary)),
         ],
       ),
     );

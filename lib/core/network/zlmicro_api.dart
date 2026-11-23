@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../data/known_devices.dart';
 import '../models/device_profile.dart';
 
 /// Одноразовый импорт профиля устройства по коду с коробки (ТЗ 6.1).
@@ -9,8 +10,13 @@ import '../models/device_profile.dart';
 /// Единственный сетевой запрос приложения:
 /// GET http://lovespouse.zlmicro.com/index.php?g=App&m=Diyapp&a=getproductdetail&barcode={code}&userid=-1
 ///
-/// Cleartext HTTP разрешён только для этого домена (ATS / network_security_config).
-/// После сохранения профиля повторные запросы не требуются.
+/// Реальный формат ответа (проверено живым запросом для barcode 4923):
+/// { "data": { "Title", "DeviceTitle", "BarCode", "BroadcastPrefix": "77 62 4d 53 45",
+///   "Pics", "Qrcode", "FuncObj": {...}, "ClassicId": [...], "IsPrecise": 1 },
+///   "response": { "result": true, "errorCode": 10000 } }
+///
+/// Команд в этом эндпоинте нет — они подбираются из известных семейств
+/// по префиксу либо через Command Hunter.
 class ZlmicroApi {
   ZlmicroApi({http.Client? client}) : _client = client ?? http.Client();
 
@@ -30,8 +36,7 @@ class ZlmicroApi {
         },
       );
 
-  /// Запрашивает модель по коду и парсит ответ в черновик профиля.
-  /// Бросает [ImportException] с понятным сообщением при любой ошибке.
+  /// Запрашивает модель по коду и парсит ответ в профиль.
   Future<DeviceProfile> fetchDevice(String barcode) async {
     final code = barcode.trim();
     if (code.isEmpty) {
@@ -59,67 +64,74 @@ class ZlmicroApi {
     } catch (_) {
       throw const ImportException('Не удалось разобрать ответ сервера');
     }
+    final result = (json['response'] as Map<String, dynamic>?)?['result'];
+    if (result == false) {
+      throw const ImportException(
+        'Устройство с таким кодом не найдено в базе. '
+        'Проверьте код или выберите профиль из оффлайн-базы.',
+      );
+    }
     return parseProductResponse(code, json);
   }
 
-  /// Парсит JSON ответа zlmicro в DeviceProfile.
-  ///
-  /// Ответ содержит сведения о модели: название, картинку и таблицу
-  /// команд. Известные поля ответа (productname / prefix / cmds)
-  /// нормализуются; нераспознанный формат даёт профиль-черновик с
-  /// префиксом по умолчанию, который наполняется через Command Hunter.
+  /// Парсит реальный JSON ответа zlmicro в DeviceProfile.
   static DeviceProfile parseProductResponse(
     String barcode,
     Map<String, dynamic> json,
   ) {
     final data = (json['data'] as Map<String, dynamic>?) ?? json;
-    final name = (data['productname'] ??
-            data['product_name'] ??
-            data['name'] ??
-            'Модель #$barcode')
-        .toString();
-    final prefix = (data['prefix'] ??
-            data['broadcast_prefix'] ??
-            defaultPrefix)
-        .toString()
-        .replaceAll(RegExp('[^0-9a-fA-F]'), '')
-        .toUpperCase();
 
-    final channels = <DeviceChannel>[
-      DeviceChannel(
-        id: 'ch_vibe',
-        name: 'Вибрация',
-        type: ChannelType.vibrate,
-        stopCmdHex: defaultStopCmd,
-        intensityStepsHex: const <String>[
-          defaultStopCmd,
-          'F41D7C',
-          'F7864E',
-          defaultMaxCmd,
-        ],
-      ),
-    ];
+    final title = (data['Title'] ?? '').toString().trim();
+    final deviceTitle = (data['DeviceTitle'] ?? '').toString().trim();
+    final name = deviceTitle.isNotEmpty
+        ? deviceTitle
+        : (title.isNotEmpty ? 'Модель #$title' : 'Модель #$barcode');
+
+    // BroadcastPrefix приходит как "77 62 4d 53 45" — нормализуем.
+    final rawPrefix = (data['BroadcastPrefix'] ?? '').toString();
+    final prefix = rawPrefix.replaceAll(RegExp('[^0-9a-fA-F]'), '').toUpperCase();
+
+    final pics = (data['Pics'] ?? '').toString();
+
+    // Подбираем проверенные каналы по известному семейству префикса.
+    final family = KnownDevices.byPrefix(prefix);
+    final channels = family?.channels ??
+        <DeviceChannel>[
+          DeviceChannel(
+            id: 'ch_1',
+            name: 'Канал 1',
+            type: ChannelType.vibrate,
+            stopCmdHex: KnownDevices.allSteps.first,
+            intensityStepsHex: KnownDevices.allSteps,
+            presets: <PresetCommand>[
+              for (var i = 1; i < KnownDevices.allSteps.length; i++)
+                PresetCommand(
+                  id: 'p$i',
+                  label: 'Паттерн $i',
+                  cmdHex: KnownDevices.allSteps[i],
+                  icon: 'speed_$i',
+                ),
+            ],
+          ),
+        ];
 
     return DeviceProfile(
       id: 'import-$barcode-${DateTime.now().millisecondsSinceEpoch}',
       barcode: barcode,
       name: name,
-      broadcastPrefixHex: prefix.length == 16 ? prefix : defaultPrefix,
-      manufacturerId: 0xFFF0,
+      localImagePath: pics.isEmpty ? null : pics,
+      broadcastPrefixHex:
+          prefix.isEmpty ? '6DB643CE97FE427C' : prefix,
+      manufacturerId: family?.manufacturerId ?? 0xFFF0,
       channels: channels,
       createdAt: DateTime.now().toUtc(),
     );
   }
 
-  /// Эталонный префикс из ТЗ 5.1.
-  static const String defaultPrefix = '6DB643CE97FE427C';
-  static const String defaultStopCmd = 'E5157D';
-  static const String defaultMaxCmd = 'E68E4F';
-
   void dispose() => _client.close();
 }
 
-/// Ошибка импорта с сообщением для пользователя (ТЗ 6.1, отказоустойчивость).
+/// Ошибка импорта с сообщением для пользователя (ТЗ 6.1).
 class ImportException implements Exception {
   const ImportException(this.message);
 

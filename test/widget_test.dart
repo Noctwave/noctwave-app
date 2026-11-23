@@ -34,7 +34,7 @@ void main() {
     expect(find.text('REC'), findsOneWidget);
     expect(find.text('СТОП'), findsOneWidget);
     expect(find.text('TX'), findsOneWidget);
-    expect(find.text('Hold-to-Boost'), findsOneWidget);
+    expect(find.text('Удерживай — максимум'), findsOneWidget);
     expect(find.text('Слабо'), findsOneWidget);
   });
 
